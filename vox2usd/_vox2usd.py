@@ -47,25 +47,8 @@ class Vox2UsdConverter(object):
         self.use_point_instancing = use_point_instancing
         self.use_omni_mtls = use_omni_mtls
 
-    def convert(self):
-        print("\nImporting voxel file {}\n".format(self.vox_file_path))
+    def calculate_simple_meshes(self, used_palette_indices):
 
-        import time
-        time_start = time.time()
-        VoxBaseMaterial.initialize(self.gamma_correct, self.gamma_value)
-        VoxReader(self.vox_file_path).read()
-
-        self.asset_name = os.path.splitext(os.path.basename(self.vox_file_path))[0]
-        self.stage = Usd.Stage.CreateNew(os.path.join(r"C:\temp", "{}.usda".format(self.asset_name)))
-        UsdGeom.SetStageUpAxis(self.stage, UsdGeom.Tokens.z)
-        UsdGeom.SetStageMetersPerUnit(self.stage, 1.0)
-        asset_prim = UsdGeom.Xform.Define(self.stage, "/" + self.asset_name)
-        Usd.ModelAPI(asset_prim).SetKind(Kind.Tokens.component)
-        self.geometry_scope = UsdGeom.Scope.Define(self.stage, asset_prim.GetPath().AppendPath(GEOMETRY_SCOPE_NAME))
-        self.looks_scope = UsdGeom.Scope.Define(self.stage, asset_prim.GetPath().AppendPath(LOOKS_SCOPE_NAME))
-
-
-        used_palette_indices = set()
         for model in VoxModel.get_all():
             pos_sorted_voxels = {}
             mtl_sorted_voxels = {}
@@ -94,53 +77,165 @@ class Vox2UsdConverter(object):
                     # -Z = Bottom
                     neighbors = []
                     front = "{},{},{}".format(voxel[0], voxel[1] - 1, voxel[2])
-                    if front not in pos_sorted_voxels or (type(pos_sorted_voxels[front]) == VoxGlassMaterial and not working_is_glass):
-                        front_face = [(voxel[0]-half-model_half_x, voxel[1]-half-model_half_y, voxel[2]-half),
-                                      (voxel[0]+half-model_half_x, voxel[1]-half-model_half_y, voxel[2]-half),
-                                      (voxel[0]+half-model_half_x, voxel[1]-half-model_half_y, voxel[2]+half),
-                                      (voxel[0]-half-model_half_x, voxel[1]-half-model_half_y, voxel[2]+half)]
+                    if front not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[front]) == VoxGlassMaterial and not working_is_glass):
+                        front_face = [(voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
+                                      (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
+                                      (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half),
+                                      (voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half)]
 
                         model.meshes[mtl_id].extend(front_face)
 
                     back = "{},{},{}".format(voxel[0], voxel[1] + 1, voxel[2])
-                    if back not in pos_sorted_voxels or (type(pos_sorted_voxels[back]) == VoxGlassMaterial and not working_is_glass):
-                        back_face = [(voxel[0] + half-model_half_x, voxel[1] + half-model_half_y, voxel[2] - half),
-                                     (voxel[0] - half-model_half_x, voxel[1] + half-model_half_y, voxel[2] - half),
-                                     (voxel[0] - half-model_half_x, voxel[1] + half-model_half_y, voxel[2] + half),
-                                     (voxel[0] + half-model_half_x, voxel[1] + half-model_half_y, voxel[2] + half)]
+                    if back not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[back]) == VoxGlassMaterial and not working_is_glass):
+                        back_face = [(voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
+                                     (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
+                                     (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half),
+                                     (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half)]
                         model.meshes[mtl_id].extend(back_face)
 
                     right = "{},{},{}".format(voxel[0] + 1, voxel[1], voxel[2])
-                    if right not in pos_sorted_voxels or (type(pos_sorted_voxels[right]) == VoxGlassMaterial and not working_is_glass):
-                        right_face = [(voxel[0] + half-model_half_x, voxel[1] - half-model_half_y, voxel[2] - half),
-                                     (voxel[0] + half-model_half_x, voxel[1] + half-model_half_y, voxel[2] - half),
-                                     (voxel[0] + half-model_half_x, voxel[1] + half-model_half_y, voxel[2] + half),
-                                     (voxel[0] + half-model_half_x, voxel[1] - half-model_half_y, voxel[2] + half)]
+                    if right not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[right]) == VoxGlassMaterial and not working_is_glass):
+                        right_face = [(voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
+                                      (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
+                                      (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half),
+                                      (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half)]
                         model.meshes[mtl_id].extend(right_face)
 
                     left = "{},{},{}".format(voxel[0] - 1, voxel[1], voxel[2])
-                    if left not in pos_sorted_voxels or (type(pos_sorted_voxels[left]) == VoxGlassMaterial and not working_is_glass):
-                        left_face = [(voxel[0] - half-model_half_x, voxel[1] + half-model_half_y, voxel[2] - half),
-                                      (voxel[0] - half-model_half_x, voxel[1] - half-model_half_y, voxel[2] - half),
-                                      (voxel[0] - half-model_half_x, voxel[1] - half-model_half_y, voxel[2] + half),
-                                      (voxel[0] - half-model_half_x, voxel[1] + half-model_half_y, voxel[2] + half)]
+                    if left not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[left]) == VoxGlassMaterial and not working_is_glass):
+                        left_face = [(voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
+                                     (voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
+                                     (voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half),
+                                     (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half)]
                         model.meshes[mtl_id].extend(left_face)
 
                     top = "{},{},{}".format(voxel[0], voxel[1], voxel[2] + 1)
-                    if top not in pos_sorted_voxels or (type(pos_sorted_voxels[top]) == VoxGlassMaterial and not working_is_glass):
-                        top_face = [(voxel[0] - half-model_half_x, voxel[1] - half-model_half_y, voxel[2] + half),
-                                     (voxel[0] + half-model_half_x, voxel[1] - half-model_half_y, voxel[2] + half),
-                                     (voxel[0] + half-model_half_x, voxel[1] + half-model_half_y, voxel[2] + half),
-                                     (voxel[0] - half-model_half_x, voxel[1] + half-model_half_y, voxel[2] + half)]
+                    if top not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[top]) == VoxGlassMaterial and not working_is_glass):
+                        top_face = [(voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half),
+                                    (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half),
+                                    (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half),
+                                    (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half)]
                         model.meshes[mtl_id].extend(top_face)
 
                     bottom = "{},{},{}".format(voxel[0], voxel[1], voxel[2] - 1)
-                    if bottom not in pos_sorted_voxels or (type(pos_sorted_voxels[bottom]) == VoxGlassMaterial and not working_is_glass):
-                        bottom_face = [(voxel[0] + half-model_half_x, voxel[1] - half-model_half_y, voxel[2] - half),
-                                    (voxel[0] - half-model_half_x, voxel[1] - half-model_half_y, voxel[2] - half),
-                                    (voxel[0] - half-model_half_x, voxel[1] + half-model_half_y, voxel[2] - half),
-                                    (voxel[0] + half-model_half_x, voxel[1] + half-model_half_y, voxel[2] - half)]
+                    if bottom not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[bottom]) == VoxGlassMaterial and not working_is_glass):
+                        bottom_face = [
+                            (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
+                            (voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
+                            (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
+                            (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half)]
                         model.meshes[mtl_id].extend(bottom_face)
+
+    def calculate_greedy_meshes(self, used_palette_indices):
+
+        for model in VoxModel.get_all():
+            pos_sorted_voxels = {}
+            mtl_sorted_voxels = {}
+            for voxel in model.voxels:
+                position_str = "{},{},{}".format(*voxel[:3])
+                mtl_id = voxel[3]
+                pos_sorted_voxels[position_str] = VoxBaseMaterial.get(mtl_id)
+                if mtl_id not in mtl_sorted_voxels:
+                    mtl_sorted_voxels[mtl_id] = []
+                mtl_sorted_voxels[mtl_id].append(voxel)
+                # This is done here, so to avoid adding materials for voxels not in bounds
+                used_palette_indices.add(mtl_id)  # record the palette entry is used
+            for mtl_id, voxels in mtl_sorted_voxels.items():
+                model.meshes[mtl_id] = []
+                # TODO: IDK why getting the floor of this works.  Otherwise, I get cracks between models
+                model_half_x = int(model.size[0] / 2.0)
+                model_half_y = int(model.size[1] / 2.0)
+                half = self.voxel_size / 2.0
+                working_is_glass = type(VoxBaseMaterial.get(mtl_id)) == VoxGlassMaterial
+                for voxel in voxels:
+                    # -Y = Front
+                    # +Y = Back
+                    # -X = Right
+                    # +X = Left
+                    # +Z = Top
+                    # -Z = Bottom
+                    neighbors = []
+                    front = "{},{},{}".format(voxel[0], voxel[1] - 1, voxel[2])
+                    if front not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[front]) == VoxGlassMaterial and not working_is_glass):
+                        front_face = [(voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
+                                      (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
+                                      (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half),
+                                      (voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half)]
+
+                        model.meshes[mtl_id].extend(front_face)
+
+                    back = "{},{},{}".format(voxel[0], voxel[1] + 1, voxel[2])
+                    if back not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[back]) == VoxGlassMaterial and not working_is_glass):
+                        back_face = [(voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
+                                     (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
+                                     (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half),
+                                     (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half)]
+                        model.meshes[mtl_id].extend(back_face)
+
+                    right = "{},{},{}".format(voxel[0] + 1, voxel[1], voxel[2])
+                    if right not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[right]) == VoxGlassMaterial and not working_is_glass):
+                        right_face = [(voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
+                                      (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
+                                      (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half),
+                                      (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half)]
+                        model.meshes[mtl_id].extend(right_face)
+
+                    left = "{},{},{}".format(voxel[0] - 1, voxel[1], voxel[2])
+                    if left not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[left]) == VoxGlassMaterial and not working_is_glass):
+                        left_face = [(voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
+                                     (voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
+                                     (voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half),
+                                     (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half)]
+                        model.meshes[mtl_id].extend(left_face)
+
+                    top = "{},{},{}".format(voxel[0], voxel[1], voxel[2] + 1)
+                    if top not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[top]) == VoxGlassMaterial and not working_is_glass):
+                        top_face = [(voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half),
+                                    (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half),
+                                    (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half),
+                                    (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half)]
+                        model.meshes[mtl_id].extend(top_face)
+
+                    bottom = "{},{},{}".format(voxel[0], voxel[1], voxel[2] - 1)
+                    if bottom not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[bottom]) == VoxGlassMaterial and not working_is_glass):
+                        bottom_face = [
+                            (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
+                            (voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
+                            (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
+                            (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half)]
+                        model.meshes[mtl_id].extend(bottom_face)
+
+    def convert(self):
+        print("\nImporting voxel file {}\n".format(self.vox_file_path))
+
+        import time
+        time_start = time.time()
+        VoxBaseMaterial.initialize(self.gamma_correct, self.gamma_value)
+        VoxReader(self.vox_file_path).read()
+
+        self.asset_name = os.path.splitext(os.path.basename(self.vox_file_path))[0]
+        self.stage = Usd.Stage.CreateNew(os.path.join(r"C:\temp", "{}.usda".format(self.asset_name)))
+        UsdGeom.SetStageUpAxis(self.stage, UsdGeom.Tokens.z)
+        UsdGeom.SetStageMetersPerUnit(self.stage, 1.0)
+        asset_prim = UsdGeom.Xform.Define(self.stage, "/" + self.asset_name)
+        Usd.ModelAPI(asset_prim).SetKind(Kind.Tokens.component)
+        self.geometry_scope = UsdGeom.Scope.Define(self.stage, asset_prim.GetPath().AppendPath(GEOMETRY_SCOPE_NAME))
+        self.looks_scope = UsdGeom.Scope.Define(self.stage, asset_prim.GetPath().AppendPath(LOOKS_SCOPE_NAME))
+
+        used_palette_indices = set()
+        self.calculate_simple_meshes(used_palette_indices)
 
         self.used_mtls = {}
         for index in used_palette_indices:

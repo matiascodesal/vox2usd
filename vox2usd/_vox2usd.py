@@ -35,7 +35,7 @@ class TransformStack(object):
 class Vox2UsdConverter(object):
     def __init__(self, filepath, voxel_spacing=DEFAULT_METERS_PER_VOXEL, voxel_size=DEFAULT_METERS_PER_VOXEL,
                 use_palette=True, gamma_correct=True, gamma_value=2.2,
-                join_voxels=False, use_physics=False, use_point_instancing=True):
+                join_voxels=False, use_physics=False, use_point_instancing=True, use_omni_mtls=False):
         self.vox_file_path = filepath
         self.voxel_spacing = voxel_spacing
         self.voxel_size = voxel_size
@@ -45,6 +45,7 @@ class Vox2UsdConverter(object):
         self.join_voxels = join_voxels
         self.use_physics = use_physics
         self.use_point_instancing = use_point_instancing
+        self.use_omni_mtls = use_omni_mtls
 
     def convert(self):
         print("\nImporting voxel file {}\n".format(self.vox_file_path))
@@ -79,7 +80,7 @@ class Vox2UsdConverter(object):
                 used_palette_indices.add(mtl_id)  # record the palette entry is used
             for mtl_id, voxels in mtl_sorted_voxels.items():
                 model.meshes[mtl_id] = []
-                # TODO: IDK why gettng the floor of this works.  Otherwise, I get cracks between models
+                # TODO: IDK why getting the floor of this works.  Otherwise, I get cracks between models
                 model_half_x = int(model.size[0] / 2.0)
                 model_half_y = int(model.size[1] / 2.0)
                 half = self.voxel_size / 2.0
@@ -144,11 +145,15 @@ class Vox2UsdConverter(object):
         self.used_mtls = {}
         for index in used_palette_indices:
             mtl = VoxBaseMaterial.get(index)
-            try:
-                mtl = create_omni_mtl(self.stage, self.looks_scope, "VoxelMtl_{}".format(mtl.get_display_id()), mtl)
-            except Exception as e:
-                print(e)
-                mtl = create_usd_preview_surface_mtl(self.stage, self.looks_scope, "VoxelMtl_{}".format(mtl.get_display_id()), mtl)
+            if self.use_omni_mtls:
+                try:
+                    mtl = create_omni_mtl(self.stage, self.looks_scope, "VoxelMtl_{}".format(mtl.get_display_id()), mtl)
+                except Exception as e:
+                    print(e)
+                    mtl = create_usd_preview_surface_mtl(self.stage, self.looks_scope, "VoxelMtl_{}".format(mtl.get_display_id()), mtl)
+            else:
+                mtl = create_usd_preview_surface_mtl(self.stage, self.looks_scope,
+                                                     "VoxelMtl_{}".format(mtl.get_display_id()), mtl)
             self.used_mtls[index] = mtl
 
         print("Start converting")
@@ -179,17 +184,34 @@ class Vox2UsdConverter(object):
             curr_trans = list(translate_attr.Get())
             new_trans = [curr_trans[0], curr_trans[1], curr_trans[2] - node.model.size[2] / 2.0]
             translate_attr.Set(Gf.Vec3f(*new_trans))
-            # if self.use_point_instancing:
-            #     self.__voxels2point_instances(node)
-            # else:
-            #     self.__voxels2prims(node)
-            self.__voxels2point_instances(node, parent_prim)
+            if self.use_point_instancing:
+                self.__voxels2point_instances(node, parent_prim)
+            else:
+                # self.__voxels2prims(node)
+                self.__voxels2greedy_meshes(node, parent_prim)
 
     def __voxels2meshes(self, node, parent_prim):
+        self.total_voxels += len(node.model.voxels)
         xform = UsdGeom.Xform.Define(self.stage, parent_prim.GetPath().AppendPath("VoxelShape_{}".format(node.node_id)))
-        xform.AddTranslateOp().Set(Gf.Vec3f(self.xform_stack.x, self.xform_stack.y, self.xform_stack.z))
+        if node.position is not None:
+            xform.AddTranslateOp().Set(Gf.Vec3f(*node.position))
         for mtl_id, mesh_verts in node.model.meshes.items():
-            self.total_voxels += len(node.model.voxels)
+            mtl_display_id = VoxBaseMaterial.get(mtl_id).get_display_id()
+            mesh = UsdGeom.Mesh.Define(self.stage, xform.GetPath().AppendPath("VoxelMesh_{}".format(mtl_display_id)))
+            mesh.CreatePointsAttr(mesh_verts)
+            face_count = int(len(mesh_verts) / 4.0)
+            self.total_triangles += face_count * 2
+            mesh.CreateFaceVertexCountsAttr([4]*face_count)
+            mesh.CreateFaceVertexIndicesAttr(list(range(len(mesh_verts))))
+            if self.use_palette:
+                UsdShade.MaterialBindingAPI(mesh).Bind(self.used_mtls[mtl_id])
+
+    def __voxels2greedy_meshes(self, node, parent_prim):
+        self.total_voxels += len(node.model.voxels)
+        xform = UsdGeom.Xform.Define(self.stage, parent_prim.GetPath().AppendPath("VoxelShape_{}".format(node.node_id)))
+        if node.position is not None:
+            xform.AddTranslateOp().Set(Gf.Vec3f(*node.position))
+        for mtl_id, mesh_verts in node.model.meshes.items():
             mtl_display_id = VoxBaseMaterial.get(mtl_id).get_display_id()
             mesh = UsdGeom.Mesh.Define(self.stage, xform.GetPath().AppendPath("VoxelMesh_{}".format(mtl_display_id)))
             mesh.CreatePointsAttr(mesh_verts)
@@ -296,4 +318,4 @@ def create_omni_mtl(stage, looks_scope, name, vox_mtl):
 
 
 if __name__ == '__main__':
-    Vox2UsdConverter(r"C:\temp\cop_car.vox", use_palette=True, use_physics=False, use_point_instancing=False).convert()
+    Vox2UsdConverter(r"C:\temp\greedy_simple.vox", use_palette=True, use_physics=False, use_point_instancing=False, use_omni_mtls=False).convert()

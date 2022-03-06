@@ -166,29 +166,29 @@ class Vox2UsdConverter(object):
                     # +X = Left
                     # +Z = Top
                     # -Z = Bottom
-                    # front = (voxel[0], voxel[1] - 1, voxel[2])
-                    # if front not in pos_sorted_voxels or (
-                    #         type(pos_sorted_voxels[front]) == VoxGlassMaterial and not working_is_glass):
-                    #     front_face = (voxel[0], voxel[1], voxel[2], FRONT)
-                    #     model.meshes[mtl_id][front_face] = True
-                    #
-                    # back = (voxel[0], voxel[1] + 1, voxel[2])
-                    # if back not in pos_sorted_voxels or (
-                    #         type(pos_sorted_voxels[back]) == VoxGlassMaterial and not working_is_glass):
-                    #     back_face = (voxel[0], voxel[1], voxel[2], BACK)
-                    #     model.meshes[mtl_id][back_face] = True
-                    #
-                    # right = (voxel[0] + 1, voxel[1], voxel[2])
-                    # if right not in pos_sorted_voxels or (
-                    #         type(pos_sorted_voxels[right]) == VoxGlassMaterial and not working_is_glass):
-                    #     right_face = (voxel[0], voxel[1], voxel[2], RIGHT)
-                    #     model.meshes[mtl_id][right_face] = True
-                    #
-                    # left = (voxel[0] - 1, voxel[1], voxel[2])
-                    # if left not in pos_sorted_voxels or (
-                    #         type(pos_sorted_voxels[left]) == VoxGlassMaterial and not working_is_glass):
-                    #     left_face = (voxel[0], voxel[1], voxel[2], LEFT)
-                    #     model.meshes[mtl_id][left_face] = True
+                    front = (voxel[0], voxel[1] - 1, voxel[2])
+                    if front not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[front]) == VoxGlassMaterial and not working_is_glass):
+                        front_face = (voxel[0], voxel[1], voxel[2], FRONT)
+                        model.meshes[mtl_id][front_face] = True
+
+                    back = (voxel[0], voxel[1] + 1, voxel[2])
+                    if back not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[back]) == VoxGlassMaterial and not working_is_glass):
+                        back_face = (voxel[0], voxel[1], voxel[2], BACK)
+                        model.meshes[mtl_id][back_face] = True
+
+                    right = (voxel[0] + 1, voxel[1], voxel[2])
+                    if right not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[right]) == VoxGlassMaterial and not working_is_glass):
+                        right_face = (voxel[0], voxel[1], voxel[2], RIGHT)
+                        model.meshes[mtl_id][right_face] = True
+
+                    left = (voxel[0] - 1, voxel[1], voxel[2])
+                    if left not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[left]) == VoxGlassMaterial and not working_is_glass):
+                        left_face = (voxel[0], voxel[1], voxel[2], LEFT)
+                        model.meshes[mtl_id][left_face] = True
 
                     top = (voxel[0], voxel[1], voxel[2] + 1)
                     if top not in pos_sorted_voxels or (
@@ -196,56 +196,142 @@ class Vox2UsdConverter(object):
                         top_face = (voxel[0], voxel[1], voxel[2], TOP)
                         model.meshes[mtl_id][top_face] = True
 
-                    # bottom = (voxel[0], voxel[1], voxel[2] - 1)
-                    # if bottom not in pos_sorted_voxels or (
-                    #         type(pos_sorted_voxels[bottom]) == VoxGlassMaterial and not working_is_glass):
-                    #     bottom_face = (voxel[0], voxel[1], voxel[2], BOTTOM)
-                    #     model.meshes[mtl_id][bottom_face] = True
+                    bottom = (voxel[0], voxel[1], voxel[2] - 1)
+                    if bottom not in pos_sorted_voxels or (
+                            type(pos_sorted_voxels[bottom]) == VoxGlassMaterial and not working_is_glass):
+                        bottom_face = (voxel[0], voxel[1], voxel[2], BOTTOM)
+                        model.meshes[mtl_id][bottom_face] = True
 
                 greedy_faces = []
                 run_start = None
                 run_width = 0
                 last_voxel = None
-                for side in [TOP]:
-                    for z in range(256):
-                        for y in range(256):
-                            for x in range(256):
-                                if run_start is None and (x,y,z,side) in model.meshes[mtl_id]:
-                                    run_start = (x,y,z,side)
-                                elif run_start and (x,y,z,side) not in model.meshes[mtl_id]:
-                                    for run_y in range(y + 1, 256):
+
+                def can_merge_face(u, v, w, side):
+                    if side == FRONT:
+                        return (u, w, v, side) in model.meshes[mtl_id]
+                    elif side == BACK:
+                        return (u, w, v, side) in model.meshes[mtl_id]
+                    elif side == RIGHT:
+                        return (w, u, v, side) in model.meshes[mtl_id]
+                    elif side == LEFT:
+                        return (w, u, v, side) in model.meshes[mtl_id]
+                    elif side == TOP:
+                        return (u, v, w, side) in model.meshes[mtl_id]
+                    elif side == BOTTOM:
+                        return (u, v, w, side) in model.meshes[mtl_id]
+
+                def create_merged_face(run_start, run_end, w, side):
+                    if side == FRONT:
+                        return [
+                            (run_start[0], w, run_start[1]),
+                            (run_end[0] + 1, w, run_start[1]),
+                            (run_end[0] + 1, w, run_end[1] + 1),
+                            (run_start[0], w, run_end[1] + 1)
+                        ]
+                    elif side == BACK:
+                        return [
+                            (run_end[0] + 1, w + self.voxel_size, run_start[1]),
+                            (run_start[0], w + self.voxel_size, run_start[1]),
+                            (run_start[0], w + self.voxel_size, run_end[1] + 1),
+                            (run_end[0] + 1, w + self.voxel_size, run_end[1] + 1)
+                        ]
+                    elif side == RIGHT:
+                        return [
+                            (w + self.voxel_size, run_start[0], run_start[1]),
+                            (w + self.voxel_size, run_end[0] + 1, run_start[1]),
+                            (w + self.voxel_size, run_end[0] + 1, run_end[1] + 1),
+                            (w + self.voxel_size, run_start[0], run_end[1] + 1)
+                        ]
+                    elif side == LEFT:
+                        return [
+                            (w, run_end[0] + 1, run_start[1]),
+                            (w, run_start[0], run_start[1]),
+                            (w, run_start[0], run_end[1] + 1),
+                            (w, run_end[0] + 1, run_end[1] + 1)
+                        ]
+                    elif side == TOP:
+                        # TOP winding order
+                        # 1. Bottom Left
+                        # 2. Bottom Right
+                        # 3. Top Right
+                        # 4. Top Left
+                        return [
+                            # (run_start[0] - half - model_half_x,
+                            #  run_start[1] - half - model_half_y, z + half),
+                            # (last_voxel[0] + half - model_half_x,
+                            #  run_start[1] - half - model_half_y, z + half),
+                            # (last_voxel[0] + half - model_half_x,
+                            #  last_voxel[1] + half - model_half_y, z + half),
+                            # (run_start[0] - half - model_half_x,
+                            #  last_voxel[1] + half - model_half_y, z + half)
+                            (run_start[0], run_start[1], w + self.voxel_size),
+                            (run_end[0] + 1, run_start[1], w + self.voxel_size),
+                            (run_end[0] + 1, run_end[1] + 1, w + self.voxel_size),
+                            (run_start[0], run_end[1] + 1, w + self.voxel_size)
+                        ]
+                    elif side == BOTTOM:
+                        return [
+                            (run_end[0] + 1, run_start[1], w),
+                            (run_start[0], run_start[1], w),
+                            (run_start[0], run_end[1] + 1, w),
+                            (run_end[0] + 1, run_end[1] + 1, w)
+                        ]
+
+                def remove_voxel_face(u, v, w, side):
+                    if side == FRONT:
+                        model.meshes[mtl_id].pop((pop_u, w, pop_v, side))
+                    elif side == BACK:
+                        model.meshes[mtl_id].pop((pop_u, w, pop_v, side))
+                    elif side == RIGHT:
+                        model.meshes[mtl_id].pop((w, pop_u, pop_v, side))
+                    elif side == LEFT:
+                        model.meshes[mtl_id].pop((w, pop_u, pop_v, side))
+                    elif side == TOP:
+                        model.meshes[mtl_id].pop((pop_u, pop_v, w, side))
+                    elif side == BOTTOM:
+                        model.meshes[mtl_id].pop((pop_u, pop_v, w, side))
+
+                def get_uvw_dimensions(side):
+                    if side == FRONT:
+                        return [model.size[0], model.size[2], model.size[1]]
+                    elif side == BACK:
+                        return [model.size[0], model.size[2], model.size[1]]
+                    elif side == RIGHT:
+                        return [model.size[1], model.size[2], model.size[0]]
+                    elif side == LEFT:
+                        return [model.size[1], model.size[2], model.size[0]]
+                    elif side == TOP:
+                        return [model.size[0], model.size[1], model.size[2]]
+                    elif side == BOTTOM:
+                        return [model.size[0], model.size[1], model.size[2]]
+
+                for side in [FRONT, BACK, RIGHT, LEFT, TOP, BOTTOM]:
+                    uvw_dimensions = get_uvw_dimensions(side)
+                    for w in range(uvw_dimensions[2]+1):
+                        for v in range(uvw_dimensions[1]+1):
+                            for u in range(uvw_dimensions[0]+1):
+                                if run_start is None and can_merge_face(u,v,w,side):
+                                    run_start = (u,v)
+                                elif run_start and not can_merge_face(u,v,w,side):
+                                    for run_v in range(v + 1, 256):
                                         if run_start is None:
                                             break
                                         row_complete = True
-                                        for run_x in range(run_start[0], run_start[0] + run_width):
-                                            if (run_x, run_y, z, side) not in model.meshes[mtl_id]:
+                                        for run_u in range(run_start[0], run_start[0] + run_width):
+                                            if not can_merge_face(run_u,run_v,w,side):
                                                 row_complete = False
                                                 break
                                         if row_complete:
-                                            last_voxel = (run_start[0] + run_width - 1, run_y, z, side)
+                                            last_voxel = (run_start[0] + run_width - 1, run_v)
                                         else:
-                                            merged_face = [
-                                                # (run_start[0] - half - model_half_x,
-                                                #  run_start[1] - half - model_half_y, z + half),
-                                                # (last_voxel[0] + half - model_half_x,
-                                                #  run_start[1] - half - model_half_y, z + half),
-                                                # (last_voxel[0] + half - model_half_x,
-                                                #  last_voxel[1] + half - model_half_y, z + half),
-                                                # (run_start[0] - half - model_half_x,
-                                                #  last_voxel[1] + half - model_half_y, z + half)
-                                                (run_start[0],
-                                                 run_start[1], z + self.voxel_size),
-                                                (last_voxel[0]+1,
-                                                 run_start[1], z + self.voxel_size),
-                                                (last_voxel[0]+1,
-                                                 last_voxel[1]+1, z + self.voxel_size),
-                                                (run_start[0],
-                                                 last_voxel[1]+1, z + self.voxel_size)
-                                            ]
+                                            merged_face = create_merged_face(run_start, last_voxel, w, side)
                                             greedy_faces.extend(merged_face)
-                                            for pop_y in range(run_start[1], last_voxel[1] + 1):
-                                                for pop_x in range(run_start[0], run_start[0] + run_width):
-                                                    model.meshes[mtl_id].pop((pop_x, pop_y, z, side))
+                                            # pop off any faces that we just merged so that they aren't counted when we
+                                            # continue scanning.
+                                            for pop_v in range(run_start[1], last_voxel[1] + 1):
+                                                for pop_u in range(run_start[0], run_start[0] + run_width):
+                                                    remove_voxel_face(pop_u, pop_v, w, side)
                                             run_start = None
                                             run_width = 0
                                             last_voxel = None
@@ -253,8 +339,7 @@ class Vox2UsdConverter(object):
 
                                 if run_start is not None:
                                     run_width += 1
-                                    last_voxel = (x,y,z,side)
-
+                                    last_voxel = (u,v)
 
                 model.meshes[mtl_id] = greedy_faces
 
@@ -326,25 +411,9 @@ class Vox2UsdConverter(object):
                 self.__voxels2point_instances(node, parent_prim)
             else:
                 # self.__voxels2prims(node)
-                self.__voxels2greedy_meshes(node, parent_prim)
+                self.__voxels2meshes(node, parent_prim)
 
     def __voxels2meshes(self, node, parent_prim):
-        self.total_voxels += len(node.model.voxels)
-        xform = UsdGeom.Xform.Define(self.stage, parent_prim.GetPath().AppendPath("VoxelShape_{}".format(node.node_id)))
-        if node.position is not None:
-            xform.AddTranslateOp().Set(Gf.Vec3f(*node.position))
-        for mtl_id, mesh_verts in node.model.meshes.items():
-            mtl_display_id = VoxBaseMaterial.get(mtl_id).get_display_id()
-            mesh = UsdGeom.Mesh.Define(self.stage, xform.GetPath().AppendPath("VoxelMesh_{}".format(mtl_display_id)))
-            mesh.CreatePointsAttr(mesh_verts)
-            face_count = int(len(mesh_verts) / 4.0)
-            self.total_triangles += face_count * 2
-            mesh.CreateFaceVertexCountsAttr([4]*face_count)
-            mesh.CreateFaceVertexIndicesAttr(list(range(len(mesh_verts))))
-            if self.use_palette:
-                UsdShade.MaterialBindingAPI(mesh).Bind(self.used_mtls[mtl_id])
-
-    def __voxels2greedy_meshes(self, node, parent_prim):
         self.total_voxels += len(node.model.voxels)
         xform = UsdGeom.Xform.Define(self.stage, parent_prim.GetPath().AppendPath("VoxelShape_{}".format(node.node_id)))
         if node.position is not None:
@@ -456,4 +525,4 @@ def create_omni_mtl(stage, looks_scope, name, vox_mtl):
 
 
 if __name__ == '__main__':
-    Vox2UsdConverter(r"C:\temp\greedy_simple.vox", use_palette=True, use_physics=False, use_point_instancing=False, use_omni_mtls=False).convert()
+    Vox2UsdConverter(r"C:\temp\house.vox", use_palette=True, use_physics=False, use_point_instancing=False, use_omni_mtls=False).convert()

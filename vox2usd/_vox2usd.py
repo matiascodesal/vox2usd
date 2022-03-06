@@ -148,10 +148,6 @@ class Vox2UsdConverter(object):
                 used_palette_indices.add(mtl_id)  # record the palette entry is used
             for mtl_id, voxels in mtl_sorted_voxels.items():
                 model.meshes[mtl_id] = {}
-                # TODO: IDK why getting the floor of this works.  Otherwise, I get cracks between models
-                model_half_x = int(model.size[0] / 2.0)
-                model_half_y = int(model.size[1] / 2.0)
-                half = self.voxel_size / 2.0
                 working_is_glass = type(VoxBaseMaterial.get(mtl_id)) == VoxGlassMaterial
                 FRONT = 0
                 BACK = 1
@@ -222,6 +218,10 @@ class Vox2UsdConverter(object):
                         return (u, v, w, side) in model.meshes[mtl_id]
 
                 def create_merged_face(run_start, run_end, w, side):
+                    # TODO: IDK why getting the floor of this works.  Otherwise, I get cracks between models
+                    model_half_x = int(model.size[0] / 2.0)
+                    model_half_y = int(model.size[1] / 2.0)
+                    half = self.voxel_size / 2.0
                     if side == FRONT:
                         return [
                             (run_start[0], w, run_start[1]),
@@ -314,7 +314,7 @@ class Vox2UsdConverter(object):
                                 if run_start is None and can_merge_face(u,v,w,side):
                                     run_start = (u,v)
                                 elif run_start and not can_merge_face(u,v,w,side):
-                                    for run_v in range(v + 1, 256):
+                                    for run_v in range(v + 1, uvw_dimensions[1]+1):
                                         if run_start is None:
                                             break
                                         row_complete = True
@@ -525,4 +525,4 @@ def create_omni_mtl(stage, looks_scope, name, vox_mtl):
 
 
 if __name__ == '__main__':
-    Vox2UsdConverter(r"C:\temp\house.vox", use_palette=True, use_physics=False, use_point_instancing=False, use_omni_mtls=False).convert()
+    Vox2UsdConverter(r"C:\temp\greedy_simple.vox", use_palette=True, use_physics=False, use_point_instancing=False, use_omni_mtls=False).convert()

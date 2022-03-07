@@ -56,6 +56,7 @@ class VoxReader(object):
                     for voxel in range(num_voxels):
                         voxel_data = struct.unpack('<4B', self.vox_file.read(4))
                         voxels.append(voxel_data)
+                        VoxBaseMaterial.used_palette_ids.add(voxel_data[3])
                     VoxModel.get(model_num).add_voxels(voxels)
                     model_num += 1
                 elif name == 'nTRN':
@@ -256,6 +257,7 @@ class VoxBaseMaterial(object):
     instances = {}
     gamma_correct = False
     gamma_value = 2.2
+    used_palette_ids = set()
 
     def __init__(self, palette_id, color):
         self.palette_id = palette_id

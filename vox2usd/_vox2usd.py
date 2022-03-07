@@ -1,4 +1,5 @@
 import os
+import inspect
 import struct
 
 from pxr import Usd, UsdGeom, UsdShade, Gf, Sdf, Kind
@@ -9,6 +10,19 @@ GEOMETRY_SCOPE_NAME = "Geometry"
 LOOKS_SCOPE_NAME = "Looks"
 DEFAULT_VOXELS_PER_METER = 1
 DEFAULT_METERS_PER_VOXEL = 1.0 / DEFAULT_VOXELS_PER_METER
+
+
+class VoxelSides(object):
+    FRONT = 0   # -Y = Front
+    BACK = 1    # +Y = Back
+    RIGHT = 2   # -X = Right
+    LEFT = 3    # +X = Left
+    BOTTOM = 4  # -Z = Bottom
+    TOP = 5     # +Z = Top
+
+    @staticmethod
+    def values():
+        return [name[1] for name in inspect.getmembers(VoxelSides) if not name[0].startswith('_') and not inspect.isfunction(name[1])]
 
 
 class TransformStack(object):
@@ -47,7 +61,7 @@ class Vox2UsdConverter(object):
         self.use_point_instancing = use_point_instancing
         self.use_omni_mtls = use_omni_mtls
 
-    def calculate_simple_meshes(self, used_palette_indices):
+    def calculate_simple_meshes(self):
 
         for model in VoxModel.get_all():
             pos_sorted_voxels = {}
@@ -59,23 +73,14 @@ class Vox2UsdConverter(object):
                 if mtl_id not in mtl_sorted_voxels:
                     mtl_sorted_voxels[mtl_id] = []
                 mtl_sorted_voxels[mtl_id].append(voxel)
-                # This is done here, so to avoid adding materials for voxels not in bounds
-                used_palette_indices.add(mtl_id)  # record the palette entry is used
             for mtl_id, voxels in mtl_sorted_voxels.items():
                 model.meshes[mtl_id] = []
-                # TODO: IDK why getting the floor of this works.  Otherwise, I get cracks between models
+                # Because, MV only translates on whole values, we need to round or floor the for odd numbered dimensions.
                 model_half_x = int(model.size[0] / 2.0)
                 model_half_y = int(model.size[1] / 2.0)
                 half = self.voxel_size / 2.0
                 working_is_glass = type(VoxBaseMaterial.get(mtl_id)) == VoxGlassMaterial
                 for voxel in voxels:
-                    # -Y = Front
-                    # +Y = Back
-                    # -X = Right
-                    # +X = Left
-                    # +Z = Top
-                    # -Z = Bottom
-                    neighbors = []
                     front = (voxel[0], voxel[1] - 1, voxel[2])
                     if front not in pos_sorted_voxels or (
                             type(pos_sorted_voxels[front]) == VoxGlassMaterial and not working_is_glass):
@@ -132,7 +137,7 @@ class Vox2UsdConverter(object):
                             (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half)]
                         model.meshes[mtl_id].extend(bottom_face)
 
-    def calculate_greedy_meshes(self, used_palette_indices):
+    def calculate_greedy_meshes(self):
 
         for model in VoxModel.get_all():
             pos_sorted_voxels = {}
@@ -144,58 +149,45 @@ class Vox2UsdConverter(object):
                 if mtl_id not in mtl_sorted_voxels:
                     mtl_sorted_voxels[mtl_id] = []
                 mtl_sorted_voxels[mtl_id].append(voxel)
-                # This is done here, so to avoid adding materials for voxels not in bounds
-                used_palette_indices.add(mtl_id)  # record the palette entry is used
             for mtl_id, voxels in mtl_sorted_voxels.items():
                 model.meshes[mtl_id] = {}
                 working_is_glass = type(VoxBaseMaterial.get(mtl_id)) == VoxGlassMaterial
-                FRONT = 0
-                BACK = 1
-                RIGHT = 2
-                LEFT = 3
-                TOP = 4
-                BOTTOM = 5
                 for voxel in voxels:
-                    # -Y = Front
-                    # +Y = Back
-                    # -X = Right
-                    # +X = Left
-                    # +Z = Top
-                    # -Z = Bottom
+
                     front = (voxel[0], voxel[1] - 1, voxel[2])
                     if front not in pos_sorted_voxels or (
                             type(pos_sorted_voxels[front]) == VoxGlassMaterial and not working_is_glass):
-                        front_face = (voxel[0], voxel[1], voxel[2], FRONT)
+                        front_face = (voxel[0], voxel[1], voxel[2], VoxelSides.FRONT)
                         model.meshes[mtl_id][front_face] = True
 
                     back = (voxel[0], voxel[1] + 1, voxel[2])
                     if back not in pos_sorted_voxels or (
                             type(pos_sorted_voxels[back]) == VoxGlassMaterial and not working_is_glass):
-                        back_face = (voxel[0], voxel[1], voxel[2], BACK)
+                        back_face = (voxel[0], voxel[1], voxel[2], VoxelSides.BACK)
                         model.meshes[mtl_id][back_face] = True
 
                     right = (voxel[0] + 1, voxel[1], voxel[2])
                     if right not in pos_sorted_voxels or (
                             type(pos_sorted_voxels[right]) == VoxGlassMaterial and not working_is_glass):
-                        right_face = (voxel[0], voxel[1], voxel[2], RIGHT)
+                        right_face = (voxel[0], voxel[1], voxel[2], VoxelSides.RIGHT)
                         model.meshes[mtl_id][right_face] = True
 
                     left = (voxel[0] - 1, voxel[1], voxel[2])
                     if left not in pos_sorted_voxels or (
                             type(pos_sorted_voxels[left]) == VoxGlassMaterial and not working_is_glass):
-                        left_face = (voxel[0], voxel[1], voxel[2], LEFT)
+                        left_face = (voxel[0], voxel[1], voxel[2], VoxelSides.LEFT)
                         model.meshes[mtl_id][left_face] = True
 
                     top = (voxel[0], voxel[1], voxel[2] + 1)
                     if top not in pos_sorted_voxels or (
                             type(pos_sorted_voxels[top]) == VoxGlassMaterial and not working_is_glass):
-                        top_face = (voxel[0], voxel[1], voxel[2], TOP)
+                        top_face = (voxel[0], voxel[1], voxel[2], VoxelSides.TOP)
                         model.meshes[mtl_id][top_face] = True
 
                     bottom = (voxel[0], voxel[1], voxel[2] - 1)
                     if bottom not in pos_sorted_voxels or (
                             type(pos_sorted_voxels[bottom]) == VoxGlassMaterial and not working_is_glass):
-                        bottom_face = (voxel[0], voxel[1], voxel[2], BOTTOM)
+                        bottom_face = (voxel[0], voxel[1], voxel[2], VoxelSides.BOTTOM)
                         model.meshes[mtl_id][bottom_face] = True
 
                 greedy_faces = []
@@ -204,109 +196,122 @@ class Vox2UsdConverter(object):
                 last_voxel = None
 
                 def can_merge_face(u, v, w, side):
-                    if side == FRONT:
+                    if side == VoxelSides.FRONT:
                         return (u, w, v, side) in model.meshes[mtl_id]
-                    elif side == BACK:
+                    elif side == VoxelSides.BACK:
                         return (u, w, v, side) in model.meshes[mtl_id]
-                    elif side == RIGHT:
+                    elif side == VoxelSides.RIGHT:
                         return (w, u, v, side) in model.meshes[mtl_id]
-                    elif side == LEFT:
+                    elif side == VoxelSides.LEFT:
                         return (w, u, v, side) in model.meshes[mtl_id]
-                    elif side == TOP:
+                    elif side == VoxelSides.TOP:
                         return (u, v, w, side) in model.meshes[mtl_id]
-                    elif side == BOTTOM:
+                    elif side == VoxelSides.BOTTOM:
                         return (u, v, w, side) in model.meshes[mtl_id]
 
                 def create_merged_face(run_start, run_end, w, side):
+                    """ Create a face. Also centers the model in X and Y.
+
+                    Args:
+                        run_start:
+                        run_end:
+                        w:
+                        side:
+
+                    Returns:
+
+                    """
                     # TODO: IDK why getting the floor of this works.  Otherwise, I get cracks between models
                     model_half_x = int(model.size[0] / 2.0)
                     model_half_y = int(model.size[1] / 2.0)
                     half = self.voxel_size / 2.0
-                    if side == FRONT:
-                        return [
+                    merged_face = None
+                    if side == VoxelSides.FRONT:
+                        merged_face = [
                             (run_start[0], w, run_start[1]),
                             (run_end[0] + 1, w, run_start[1]),
                             (run_end[0] + 1, w, run_end[1] + 1),
                             (run_start[0], w, run_end[1] + 1)
                         ]
-                    elif side == BACK:
-                        return [
-                            (run_end[0] + 1, w + self.voxel_size, run_start[1]),
+                    elif side == VoxelSides.BACK:
+                        merged_face = [
+                            (run_end[0] + self.voxel_size, w + self.voxel_size, run_start[1]),
                             (run_start[0], w + self.voxel_size, run_start[1]),
-                            (run_start[0], w + self.voxel_size, run_end[1] + 1),
-                            (run_end[0] + 1, w + self.voxel_size, run_end[1] + 1)
+                            (run_start[0], w + self.voxel_size, run_end[1] + self.voxel_size),
+                            (run_end[0] + self.voxel_size, w + self.voxel_size, run_end[1] + self.voxel_size)
                         ]
-                    elif side == RIGHT:
-                        return [
+                    elif side == VoxelSides.RIGHT:
+                        merged_face = [
                             (w + self.voxel_size, run_start[0], run_start[1]),
-                            (w + self.voxel_size, run_end[0] + 1, run_start[1]),
-                            (w + self.voxel_size, run_end[0] + 1, run_end[1] + 1),
-                            (w + self.voxel_size, run_start[0], run_end[1] + 1)
+                            (w + self.voxel_size, run_end[0] + self.voxel_size, run_start[1]),
+                            (w + self.voxel_size, run_end[0] + self.voxel_size, run_end[1] + self.voxel_size),
+                            (w + self.voxel_size, run_start[0], run_end[1] + self.voxel_size)
                         ]
-                    elif side == LEFT:
-                        return [
-                            (w, run_end[0] + 1, run_start[1]),
+                    elif side == VoxelSides.LEFT:
+                        merged_face = [
+                            (w, run_end[0] + self.voxel_size, run_start[1]),
                             (w, run_start[0], run_start[1]),
-                            (w, run_start[0], run_end[1] + 1),
-                            (w, run_end[0] + 1, run_end[1] + 1)
+                            (w, run_start[0], run_end[1] + self.voxel_size),
+                            (w, run_end[0] + self.voxel_size, run_end[1] + self.voxel_size)
                         ]
-                    elif side == TOP:
+                    elif side == VoxelSides.TOP:
                         # TOP winding order
                         # 1. Bottom Left
                         # 2. Bottom Right
                         # 3. Top Right
                         # 4. Top Left
-                        return [
-                            # (run_start[0] - half - model_half_x,
-                            #  run_start[1] - half - model_half_y, z + half),
-                            # (last_voxel[0] + half - model_half_x,
-                            #  run_start[1] - half - model_half_y, z + half),
-                            # (last_voxel[0] + half - model_half_x,
-                            #  last_voxel[1] + half - model_half_y, z + half),
-                            # (run_start[0] - half - model_half_x,
-                            #  last_voxel[1] + half - model_half_y, z + half)
+                        merged_face = [
                             (run_start[0], run_start[1], w + self.voxel_size),
-                            (run_end[0] + 1, run_start[1], w + self.voxel_size),
-                            (run_end[0] + 1, run_end[1] + 1, w + self.voxel_size),
-                            (run_start[0], run_end[1] + 1, w + self.voxel_size)
+                            (run_end[0] + self.voxel_size, run_start[1], w + self.voxel_size),
+                            (run_end[0] + self.voxel_size, run_end[1] + self.voxel_size, w + self.voxel_size),
+                            (run_start[0], run_end[1] + self.voxel_size, w + self.voxel_size)
                         ]
-                    elif side == BOTTOM:
-                        return [
-                            (run_end[0] + 1, run_start[1], w),
+                    elif side == VoxelSides.BOTTOM:
+                        merged_face = [
+                            (run_end[0] + self.voxel_size, run_start[1], w),
                             (run_start[0], run_start[1], w),
-                            (run_start[0], run_end[1] + 1, w),
-                            (run_end[0] + 1, run_end[1] + 1, w)
+                            (run_start[0], run_end[1] + self.voxel_size, w),
+                            (run_end[0] + self.voxel_size, run_end[1] + self.voxel_size, w)
                         ]
 
+                    for vert_id in range(len(merged_face)):
+                        merged_face[vert_id] = (
+                            merged_face[vert_id][0] - model_half_x,
+                            merged_face[vert_id][1] - model_half_y,
+                            merged_face[vert_id][2]
+                        )
+
+                    return merged_face
+
                 def remove_voxel_face(u, v, w, side):
-                    if side == FRONT:
+                    if side == VoxelSides.FRONT:
                         model.meshes[mtl_id].pop((pop_u, w, pop_v, side))
-                    elif side == BACK:
+                    elif side == VoxelSides.BACK:
                         model.meshes[mtl_id].pop((pop_u, w, pop_v, side))
-                    elif side == RIGHT:
+                    elif side == VoxelSides.RIGHT:
                         model.meshes[mtl_id].pop((w, pop_u, pop_v, side))
-                    elif side == LEFT:
+                    elif side == VoxelSides.LEFT:
                         model.meshes[mtl_id].pop((w, pop_u, pop_v, side))
-                    elif side == TOP:
+                    elif side == VoxelSides.TOP:
                         model.meshes[mtl_id].pop((pop_u, pop_v, w, side))
-                    elif side == BOTTOM:
+                    elif side == VoxelSides.BOTTOM:
                         model.meshes[mtl_id].pop((pop_u, pop_v, w, side))
 
                 def get_uvw_dimensions(side):
-                    if side == FRONT:
+                    if side == VoxelSides.FRONT:
                         return [model.size[0], model.size[2], model.size[1]]
-                    elif side == BACK:
+                    elif side == VoxelSides.BACK:
                         return [model.size[0], model.size[2], model.size[1]]
-                    elif side == RIGHT:
+                    elif side == VoxelSides.RIGHT:
                         return [model.size[1], model.size[2], model.size[0]]
-                    elif side == LEFT:
+                    elif side == VoxelSides.LEFT:
                         return [model.size[1], model.size[2], model.size[0]]
-                    elif side == TOP:
+                    elif side == VoxelSides.TOP:
                         return [model.size[0], model.size[1], model.size[2]]
-                    elif side == BOTTOM:
+                    elif side == VoxelSides.BOTTOM:
                         return [model.size[0], model.size[1], model.size[2]]
 
-                for side in [FRONT, BACK, RIGHT, LEFT, TOP, BOTTOM]:
+                for side in VoxelSides.values():
                     uvw_dimensions = get_uvw_dimensions(side)
                     for w in range(uvw_dimensions[2]+1):
                         for v in range(uvw_dimensions[1]+1):
@@ -344,7 +349,6 @@ class Vox2UsdConverter(object):
                 model.meshes[mtl_id] = greedy_faces
 
 
-
     def convert(self):
         print("\nImporting voxel file {}\n".format(self.vox_file_path))
 
@@ -362,11 +366,11 @@ class Vox2UsdConverter(object):
         self.geometry_scope = UsdGeom.Scope.Define(self.stage, asset_prim.GetPath().AppendPath(GEOMETRY_SCOPE_NAME))
         self.looks_scope = UsdGeom.Scope.Define(self.stage, asset_prim.GetPath().AppendPath(LOOKS_SCOPE_NAME))
 
-        used_palette_indices = set()
-        self.calculate_greedy_meshes(used_palette_indices)
+        #self.calculate_simple_meshes()
+        self.calculate_greedy_meshes()
 
         self.used_mtls = {}
-        for index in used_palette_indices:
+        for index in VoxBaseMaterial.used_palette_ids:
             mtl = VoxBaseMaterial.get(index)
             if self.use_omni_mtls:
                 try:
@@ -403,6 +407,7 @@ class Vox2UsdConverter(object):
                 self.__convert_node(child, parent_prim)
         elif node.model is not None:
             # Undo extra vertical translation that MV adds to all models
+            # My pivots are always at the bottom of the model.
             translate_attr = parent_prim.GetPrim().GetAttribute("xformOp:translate")
             curr_trans = list(translate_attr.Get())
             new_trans = [curr_trans[0], curr_trans[1], curr_trans[2] - node.model.size[2] / 2.0]
@@ -410,7 +415,6 @@ class Vox2UsdConverter(object):
             if self.use_point_instancing:
                 self.__voxels2point_instances(node, parent_prim)
             else:
-                # self.__voxels2prims(node)
                 self.__voxels2meshes(node, parent_prim)
 
     def __voxels2meshes(self, node, parent_prim):
@@ -473,40 +477,6 @@ class Vox2UsdConverter(object):
         instancer.GetProtoIndicesAttr().Set(ids)
         instancer.GetPositionsAttr().Set(positions)
 
-    def __voxels2prims(self, node, parent_prim):
-        if self.join_voxels:
-            pass
-        voxel_xform = UsdGeom.Xform.Define(self.stage, "/Voxel")
-        voxel_mesh = UsdGeom.Cube.Define(self.stage, voxel_xform.GetPath().AppendPath("VoxelMesh"))
-        voxel_mesh.CreateSizeAttr(self.voxel_size)
-        for idx, voxel in enumerate(node.model.voxels):
-            self.total_voxels += 1
-            # xform = UsdGeom.Xform.Define(stage, geometry_scope.GetPath().AppendPath("Voxel_{}".format(idx)))
-            # TODO: Fix reference to same file
-            # xform.GetPrim().GetReferences().AddReference(stage.GetRootLayer().identifier, voxel_xform.GetPath())
-            # xform.GetPrim().SetInstanceable(True)
-            cube = UsdGeom.Cube.Define(self.stage,
-                                       parent_prim.GetPath().AppendPath("Voxel_{}".format(idx)))
-            cube.CreateSizeAttr(self.voxel_size)
-            position = [float(coord) * self.voxel_spacing for coord in voxel[:3]]
-            position = [position[0] - node.model.size[0] / 2.0,
-                        position[1] - node.model.size[1] / 2.0,
-                        position[2]]
-            # xform.AddTranslateOp().Set(Gf.Vec3f(*position))
-            cube.AddTranslateOp().Set(Gf.Vec3f(*position))
-
-            if self.use_physics:
-                physics_apis = Sdf.TokenListOp.Create(["PhysicsRigidBodyAPI", "PhysicsCollisionAPI"])
-                cube_prim = cube.GetPrim()
-                cube_prim.SetMetadata("apiSchemas", physics_apis)
-                cube_prim.CreateAttribute("physics:collisionEnabled", Sdf.ValueTypeNames.Bool).Set(1)
-                cube_prim.CreateAttribute("physics:kinematicEnabled", Sdf.ValueTypeNames.Bool).Set(0)
-                cube_prim.CreateAttribute("physics:rigidBodyEnabled", Sdf.ValueTypeNames.Bool).Set(1)
-                cube_prim.CreateAttribute("physics:startsAsleep", Sdf.ValueTypeNames.Bool).Set(1)
-            if self.use_palette:
-                # UsdShade.MaterialBindingAPI(xform).Bind(used_mtls[voxel[3]])
-                UsdShade.MaterialBindingAPI(cube).Bind(self.used_mtls[voxel[3]])
-
 
 def create_usd_preview_surface_mtl(stage, looks_scope, name, vox_mtl):
     mtl = UsdShade.Material.Define(stage, looks_scope.GetPath().AppendPath(name))
@@ -525,4 +495,4 @@ def create_omni_mtl(stage, looks_scope, name, vox_mtl):
 
 
 if __name__ == '__main__':
-    Vox2UsdConverter(r"C:\temp\greedy_simple.vox", use_palette=True, use_physics=False, use_point_instancing=False, use_omni_mtls=False).convert()
+    Vox2UsdConverter(r"C:\temp\house.vox", use_palette=True, use_physics=False, use_point_instancing=False, use_omni_mtls=False).convert()

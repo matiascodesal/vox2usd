@@ -1,3 +1,4 @@
+import copy
 import os
 import inspect
 import struct
@@ -366,7 +367,6 @@ class Vox2UsdConverter(object):
         self.geometry_scope = UsdGeom.Scope.Define(self.stage, asset_prim.GetPath().AppendPath(GEOMETRY_SCOPE_NAME))
         self.looks_scope = UsdGeom.Scope.Define(self.stage, asset_prim.GetPath().AppendPath(LOOKS_SCOPE_NAME))
 
-        #self.calculate_simple_meshes()
         self.calculate_greedy_meshes()
 
         self.used_mtls = {}
@@ -400,7 +400,7 @@ class Vox2UsdConverter(object):
         if node.position is not None:
             xform = UsdGeom.Xform.Define(self.stage,
                                          parent_prim.GetPath().AppendPath("VoxelNode_{}".format(node.node_id)))
-            xform.AddTranslateOp().Set(Gf.Vec3f(*node.position))
+            xform.AddTransformOp().Set(Gf.Matrix4d(*node.transform))
             parent_prim = xform
         if node.children:
             for child in node.children:
@@ -408,10 +408,11 @@ class Vox2UsdConverter(object):
         elif node.model is not None:
             # Undo extra vertical translation that MV adds to all models
             # My pivots are always at the bottom of the model.
-            translate_attr = parent_prim.GetPrim().GetAttribute("xformOp:translate")
-            curr_trans = list(translate_attr.Get())
-            new_trans = [curr_trans[0], curr_trans[1], curr_trans[2] - node.model.size[2] / 2.0]
-            translate_attr.Set(Gf.Vec3f(*new_trans))
+            xform_attr = parent_prim.GetPrim().GetAttribute("xformOp:transform")
+            curr_xform = xform_attr.Get()
+            bottom_pivot = [curr_xform[3][0], curr_xform[3][1], curr_xform[3][2] - node.model.size[2] / 2.0, 1]
+            curr_xform.SetRow(3, Gf.Vec4d(*bottom_pivot))
+            xform_attr.Set(curr_xform)
             if self.use_point_instancing:
                 self.__voxels2point_instances(node, parent_prim)
             else:
@@ -420,8 +421,7 @@ class Vox2UsdConverter(object):
     def __voxels2meshes(self, node, parent_prim):
         self.total_voxels += len(node.model.voxels)
         xform = UsdGeom.Xform.Define(self.stage, parent_prim.GetPath().AppendPath("VoxelShape_{}".format(node.node_id)))
-        if node.position is not None:
-            xform.AddTranslateOp().Set(Gf.Vec3f(*node.position))
+        xform.AddTransformOp().Set(Gf.Matrix4d(*node.transform))
         for mtl_id, mesh_verts in node.model.meshes.items():
             mtl_display_id = VoxBaseMaterial.get(mtl_id).get_display_id()
             mesh = UsdGeom.Mesh.Define(self.stage, xform.GetPath().AppendPath("VoxelMesh_{}".format(mtl_display_id)))
@@ -495,4 +495,4 @@ def create_omni_mtl(stage, looks_scope, name, vox_mtl):
 
 
 if __name__ == '__main__':
-    Vox2UsdConverter(r"C:\temp\house.vox", use_palette=True, use_physics=False, use_point_instancing=False, use_omni_mtls=False).convert()
+    Vox2UsdConverter(r"C:\temp\cars.vox", use_palette=True, use_physics=False, use_point_instancing=False, use_omni_mtls=False).convert()

@@ -77,8 +77,49 @@ class VoxReader(object):
                     frame_dict = self.__read_vox_dict()
                     if frame_dict and "_t" in frame_dict:
                         node.position = [float(component) for component in frame_dict["_t"].split()]
+                        node.transform[3] = [node.position[0], node.position[1], node.position[2], 1]
                     print("xform", node_id, node.position)
-                    # TODO: Rotation
+
+                    if frame_dict and "_r" in frame_dict:
+                        """
+                        =================================
+                        (c) ROTATION type
+                        
+                        store a row-major rotation in the bits of a byte
+                        
+                        for example :
+                        R =
+                         0  1  0
+                         0  0 -1
+                        -1  0  0 
+                        ==>
+                        unsigned char _r = (1 << 0) | (2 << 2) | (0 << 4) | (1 << 5) | (1 << 6)
+                        
+                        bit | value
+                        0-1 : 1 : index of the non-zero entry in the first row
+                        2-3 : 2 : index of the non-zero entry in the second row
+                        4   : 0 : the sign in the first row (0 : positive; 1 : negative)
+                        5   : 1 : the sign in the second row (0 : positive; 1 : negative)
+                        6   : 1 : the sign in the third row (0 : positive; 1 : negative)
+                        """
+                        packed_rot_matrix = int(frame_dict["_r"])
+                        row1_index = packed_rot_matrix >> 0 & 3
+                        row2_index = packed_rot_matrix >> 2 & 3
+                        # derive row3 index since all three indices must be used [0,1,2]
+                        row3_index = 3 - row1_index - row2_index
+                        row1_value = 1 if packed_rot_matrix & 8 == 0 else -1
+                        row2_value = 1 if packed_rot_matrix & 16 == 0 else -1
+                        row3_value = 1 if packed_rot_matrix & 32 == 0 else -1
+                        row1 = [0] * 3
+                        row1[row1_index] = row1_value
+                        row2 = [0] * 3
+                        row2[row2_index] = row2_value
+                        row3 = [0] * 3
+                        row3[row3_index] = row3_value
+                        # convert row-major rotation matrix to column-major
+                        node.transform[0] = [row1[0], row2[0], row3[0], 0]
+                        node.transform[1] = [row1[1], row2[1], row3[1], 0]
+                        node.transform[2] = [row1[2], row2[2], row3[2], 0]
                     print("frame_dict", frame_dict)
                     if frame_dict is not None:
                         pass
@@ -204,6 +245,12 @@ class VoxNode(object):
         self.children = []
         self.model = None
         self.position = None
+        self.transform = [
+            [1,0,0,0],
+            [0,1,0,0],
+            [0,0,1,0],
+            [0,0,0,1]
+        ]
         VoxNode.instances[node_id] = self
 
     @staticmethod

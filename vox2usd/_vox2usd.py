@@ -1,7 +1,7 @@
 import os
 import inspect
 
-from pxr import Usd, UsdGeom, UsdShade, Gf, Sdf, Kind
+from pxr import Usd, UsdGeom, UsdShade, Gf, Sdf, Kind, Vt, Tf
 
 from vox2usd.vox import VoxReader, VoxModel, VoxNode, VoxTransform, VoxGroup, VoxShape, VoxBaseMaterial, VoxGlassMaterial
 
@@ -422,14 +422,12 @@ class Vox2UsdConverter(object):
         curr_xform.SetRow(3, Gf.Vec4d(*bottom_pivot))
         xform_attr.Set(curr_xform)
 
-    def __voxels2meshes(self, xform_node, shape_node, parent_prim):
-        self.total_voxels += len(shape_node.model.voxels)
+    def __create_mesh_per_mtl(self, xform_node, shape_node, parent_prim):
         xform = UsdGeom.Xform.Define(self.stage, parent_prim.GetPath().AppendPath("VoxelModel_{}".format(shape_node.node_id)))
         xform.AddTransformOp().Set(Gf.Matrix4d(*xform_node.transform))
         self.__set_pivot(shape_node.model, xform)
         for mtl_id, mesh_verts in shape_node.model.meshes.items():
             mtl_display_id = VoxBaseMaterial.get(mtl_id).get_display_id()
-            # TODO: GeomSubset
             mesh = UsdGeom.Mesh.Define(self.stage, xform.GetPath().AppendPath("VoxelPart_{}".format(mtl_display_id)))
             mesh.CreatePointsAttr(mesh_verts)
             face_count = int(len(mesh_verts) / 4.0)
@@ -438,6 +436,52 @@ class Vox2UsdConverter(object):
             mesh.CreateFaceVertexIndicesAttr(list(range(len(mesh_verts))))
             if self.use_palette:
                 UsdShade.MaterialBindingAPI(mesh).Bind(self.used_mtls[mtl_id])
+
+    def __create_geom_subset_per_mtl(self, xform_node, shape_node, parent_prim):
+            # merge meshes to create geomsubsets
+            vertices = []
+            total_face_count = 0
+            indices = []
+            display_colors = []
+            opacity = []
+            subsets = []
+            for mtl_id, mesh_verts in shape_node.model.meshes.items():
+                start_idx = len(vertices)
+                vertices.extend(mesh_verts)
+                end_idx = len(vertices)
+                face_count = int(len(mesh_verts) / 4.0)
+                total_face_count += face_count
+                vox_mtl = VoxBaseMaterial.get(mtl_id)
+                display_colors.extend([Gf.Vec3f(vox_mtl.color[0:3])] * face_count)
+                if isinstance(self.used_mtls[mtl_id], VoxGlassMaterial):
+                    opacity.extend([vox_mtl.get_opacity()] * face_count)
+                else:
+                    opacity.extend([1.0] * face_count)
+                subsets.append({"mtl_id": mtl_id, "start_idx": start_idx, "end_idx": end_idx})
+
+            mesh = UsdGeom.Mesh.Define(self.stage,
+                                       parent_prim.GetPath().AppendPath("VoxelModel_{}".format(shape_node.node_id)))
+            mesh.AddTransformOp().Set(Gf.Matrix4d(*xform_node.transform))
+            self.__set_pivot(shape_node.model, mesh)
+            mesh.CreatePointsAttr(vertices)
+            mesh.CreateFaceVertexCountsAttr([4] * total_face_count)
+            mesh.CreateFaceVertexIndicesAttr(list(range(len(vertices))))
+            mesh.CreateDisplayColorPrimvar(UsdGeom.Tokens.uniform).Set(display_colors)
+            mesh.CreateDisplayOpacityPrimvar(UsdGeom.Tokens.uniform).Set(opacity)
+
+            mesh_binding_api = UsdShade.MaterialBindingAPI(mesh.GetPrim())
+            for item in subsets:
+                subset = mesh_binding_api.CreateMaterialBindSubset("VoxelPart_{}".format(item["mtl_id"]),
+                                                                   Vt.IntArray(
+                                                                       list(range(item["start_idx"], item["end_idx"]))))
+                UsdShade.MaterialBindingAPI(subset.GetPrim()).Bind(self.used_mtls[item["mtl_id"]])
+
+            self.total_triangles += total_face_count * 2
+
+    def __voxels2meshes(self, xform_node, shape_node, parent_prim):
+        self.total_voxels += len(shape_node.model.voxels)
+        self.__create_geom_subset_per_mtl(xform_node, shape_node, parent_prim)
+        # self.__create_mesh_per_mtl(xform_node, shape_node, parent_prim)
 
     def __voxels2point_instances(self, xform_node, shape_node, parent_prim):
         instancer = UsdGeom.PointInstancer.Define(self.stage, parent_prim.GetPath().AppendPath(

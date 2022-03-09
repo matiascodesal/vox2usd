@@ -102,6 +102,7 @@ class VoxReader(object):
                         5   : 1 : the sign in the second row (0 : positive; 1 : negative)
                         6   : 1 : the sign in the third row (0 : positive; 1 : negative)
                         """
+                        # TODO: Figure out why rotation is wrong
                         packed_rot_matrix = int(frame_dict["_r"])
                         row1_index = packed_rot_matrix >> 0 & 3
                         row2_index = packed_rot_matrix >> 2 & 3
@@ -441,11 +442,14 @@ class VoxGlassMaterial(VoxBaseMaterial):
         self._ior = float(mtl_dict.get("_ior", 0.3))
         self._trans = float(mtl_dict.get("_trans", 0.0))
 
+    def get_opacity(self):
+        return 1 - self._trans
+
     def populate_usd_preview_surface(self, shader):
         shader.CreateIdAttr("UsdPreviewSurface")
         shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(self._rough)
         shader.CreateInput("ior", Sdf.ValueTypeNames.Float).Set(1 + self._ior)
-        shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(1 - self._trans)
+        shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(self.get_opacity())
         shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*self.color[0:3]))
         return shader
 

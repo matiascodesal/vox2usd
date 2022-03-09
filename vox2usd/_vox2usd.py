@@ -1,11 +1,9 @@
-import copy
 import os
 import inspect
-import struct
 
 from pxr import Usd, UsdGeom, UsdShade, Gf, Sdf, Kind
 
-from vox2usd.vox import VoxReader, VoxModel, VoxNode, VoxBaseMaterial, VoxGlassMaterial
+from vox2usd.vox import VoxReader, VoxModel, VoxNode, VoxTransform, VoxGroup, VoxShape, VoxBaseMaterial, VoxGlassMaterial
 
 GEOMETRY_SCOPE_NAME = "Geometry"
 LOOKS_SCOPE_NAME = "Looks"
@@ -386,7 +384,9 @@ class Vox2UsdConverter(object):
         print("Start converting")
         self.total_voxels = 0
         self.total_triangles = 0
-        for top_node in VoxNode.top_nodes:
+        print(VoxNode.instances)
+        print(VoxNode.get_top_nodes())
+        for top_node in VoxNode.get_top_nodes():
             self.__convert_node(top_node, self.geometry_scope)
 
         self.stage.GetRootLayer().Save()
@@ -397,34 +397,40 @@ class Vox2UsdConverter(object):
 
     def __convert_node(self, node, parent_prim):
         print("node_id", node.node_id)
-        if node.position is not None:
-            xform = UsdGeom.Xform.Define(self.stage,
-                                         parent_prim.GetPath().AppendPath("VoxelNode_{}".format(node.node_id)))
-            xform.AddTransformOp().Set(Gf.Matrix4d(*node.transform))
-            parent_prim = xform
-        if node.children:
-            for child in node.children:
-                self.__convert_node(child, parent_prim)
-        elif node.model is not None:
-            # Undo extra vertical translation that MV adds to all models
-            # My pivots are always at the bottom of the model.
-            xform_attr = parent_prim.GetPrim().GetAttribute("xformOp:transform")
-            curr_xform = xform_attr.Get()
-            bottom_pivot = [curr_xform[3][0], curr_xform[3][1], curr_xform[3][2] - node.model.size[2] / 2.0, 1]
-            curr_xform.SetRow(3, Gf.Vec4d(*bottom_pivot))
-            xform_attr.Set(curr_xform)
-            if self.use_point_instancing:
-                self.__voxels2point_instances(node, parent_prim)
-            else:
-                self.__voxels2meshes(node, parent_prim)
+        if isinstance(node, VoxTransform):
+            xform_child = node.get_child()
+            if isinstance(xform_child, VoxGroup):
+                xform = UsdGeom.Xform.Define(self.stage,
+                                             parent_prim.GetPath().AppendPath("VoxelGroup_{}".format(xform_child.node_id)))
+                xform.AddTransformOp().Set(Gf.Matrix4d(*node.transform))
+                for child in xform_child.children:
+                    self.__convert_node(child, xform)
+            elif isinstance(xform_child, VoxShape):
+                if self.use_point_instancing:
+                    self.__voxels2point_instances(node, xform_child, parent_prim)
+                else:
+                    self.__voxels2meshes(node, xform_child, parent_prim)
+        else:
+            raise RuntimeError("Expected VoxTransform node. Got {}.".format(node.__class__))
 
-    def __voxels2meshes(self, node, parent_prim):
-        self.total_voxels += len(node.model.voxels)
-        xform = UsdGeom.Xform.Define(self.stage, parent_prim.GetPath().AppendPath("VoxelShape_{}".format(node.node_id)))
-        xform.AddTransformOp().Set(Gf.Matrix4d(*node.transform))
-        for mtl_id, mesh_verts in node.model.meshes.items():
+    def __set_pivot(self, vox_model, xformable):
+        # Undo extra vertical translation that MV adds to all models
+        # My pivots are always at the bottom of the model.
+        xform_attr = xformable.GetPrim().GetAttribute("xformOp:transform")
+        curr_xform = xform_attr.Get()
+        bottom_pivot = [curr_xform[3][0], curr_xform[3][1], curr_xform[3][2] - vox_model.size[2] / 2.0, 1]
+        curr_xform.SetRow(3, Gf.Vec4d(*bottom_pivot))
+        xform_attr.Set(curr_xform)
+
+    def __voxels2meshes(self, xform_node, shape_node, parent_prim):
+        self.total_voxels += len(shape_node.model.voxels)
+        xform = UsdGeom.Xform.Define(self.stage, parent_prim.GetPath().AppendPath("VoxelModel_{}".format(shape_node.node_id)))
+        xform.AddTransformOp().Set(Gf.Matrix4d(*xform_node.transform))
+        self.__set_pivot(shape_node.model, xform)
+        for mtl_id, mesh_verts in shape_node.model.meshes.items():
             mtl_display_id = VoxBaseMaterial.get(mtl_id).get_display_id()
-            mesh = UsdGeom.Mesh.Define(self.stage, xform.GetPath().AppendPath("VoxelMesh_{}".format(mtl_display_id)))
+            # TODO: GeomSubset
+            mesh = UsdGeom.Mesh.Define(self.stage, xform.GetPath().AppendPath("VoxelPart_{}".format(mtl_display_id)))
             mesh.CreatePointsAttr(mesh_verts)
             face_count = int(len(mesh_verts) / 4.0)
             self.total_triangles += face_count * 2
@@ -433,9 +439,11 @@ class Vox2UsdConverter(object):
             if self.use_palette:
                 UsdShade.MaterialBindingAPI(mesh).Bind(self.used_mtls[mtl_id])
 
-    def __voxels2point_instances(self, node, parent_prim):
+    def __voxels2point_instances(self, xform_node, shape_node, parent_prim):
         instancer = UsdGeom.PointInstancer.Define(self.stage, parent_prim.GetPath().AppendPath(
-            "VoxModel_{}".format(node.model.model_id)))
+            "VoxModel_{}".format(shape_node.node_id)))
+        instancer.AddTransformOp().Set(Gf.Matrix4d(*xform_node.transform))
+        self.__set_pivot(shape_node.model, instancer)
         instancer.CreatePrototypesRel()
         proto_container = self.stage.OverridePrim(instancer.GetPath().AppendPath("Prototypes"))
         mtl2proto_id = {}
@@ -463,13 +471,13 @@ class Vox2UsdConverter(object):
         # TODO: Can I make prototypes a relative path?
         ids = []
         positions = []
-        for idx, voxel in enumerate(node.model.voxels):
+        for idx, voxel in enumerate(shape_node.model.voxels):
             self.total_voxels += 1
             ids.append(mtl2proto_id[voxel[3]])
             position = [float(coord) * self.voxel_spacing for coord in voxel[:3]]
             # XY center the local origin on the model
-            position = [position[0] - node.model.size[0] / 2.0,
-                        position[1] - node.model.size[1] / 2.0,
+            position = [position[0] - shape_node.model.size[0] / 2.0,
+                        position[1] - shape_node.model.size[1] / 2.0,
                         position[2]]
             positions.append(position)
         instancer.CreateProtoIndicesAttr()

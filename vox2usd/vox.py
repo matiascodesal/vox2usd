@@ -69,16 +69,16 @@ class VoxReader(object):
                     reserved_id, = struct.unpack('<i', self.vox_file.read(4))
                     layer_id, = struct.unpack('<i', self.vox_file.read(4))
                     num_frames, = struct.unpack('<i', self.vox_file.read(4))
-                    node = VoxNode.get_or_create_node(node_id, register_new_as_top=True)
-                    child = VoxNode.get_or_create_node(child_node_id)
-                    node.children.append(child)
+                    node = VoxTransform.get_or_create_node(node_id)
+                    node.child_id = child_node_id
+                    print("xform", node.node_id, child_node_id)
 
                     # TODO: assert (reserved_id == UINT32_MAX & & num_frames == 1); // must be these values according to the spec
                     frame_dict = self.__read_vox_dict()
                     if frame_dict and "_t" in frame_dict:
                         node.position = [float(component) for component in frame_dict["_t"].split()]
                         node.transform[3] = [node.position[0], node.position[1], node.position[2], 1]
-                    print("xform", node_id, node.position)
+                        print("xform", node_id, node.position)
 
                     if frame_dict and "_r" in frame_dict:
                         """
@@ -131,9 +131,9 @@ class VoxReader(object):
                     assert (node_dict is None)
                     num_children, = struct.unpack('<i', self.vox_file.read(4))
                     child_ids = struct.unpack('<{}i'.format(num_children), self.vox_file.read(4 * num_children))
-                    node = VoxNode.get_or_create_node(node_id, register_new_as_top=True)
+                    node = VoxGroup.get_or_create_node(node_id)
                     for child_id in child_ids:
-                        child = VoxNode.get_or_create_node(child_id)
+                        child = VoxTransform.get_or_create_node(child_id)
                         print(node)
                         node.children.append(child)
                 elif name == 'nSHP':
@@ -148,7 +148,7 @@ class VoxReader(object):
                     print("node_id", node_id)
                     print("model_id", model_id)
                     model_dict = self.__read_vox_dict()
-                    shape = VoxNode.get_or_create_node(node_id)
+                    shape = VoxShape.get_or_create_node(node_id)
                     shape.model = VoxModel.get(model_id)
                     # model dict is unused
                     assert (model_dict is None)
@@ -198,6 +198,8 @@ class VoxReader(object):
                     # This puts us out-of-step
                     raise RuntimeError("Unknown Chunk id {}".format(name))
 
+
+
     def __read_vox_dict(self):
         data = {}
         num_items, = struct.unpack('<i', self.vox_file.read(4))
@@ -238,39 +240,89 @@ class Voxel(object):
 
 class VoxNode(object):
     instances = {}
-    top_nodes = []
+    __top_nodes = None
 
     def __init__(self, node_id):
         self.node_id = node_id
-        self.children = []
-        self.model = None
-        self.position = None
-        self.transform = [
-            [1,0,0,0],
-            [0,1,0,0],
-            [0,0,1,0],
-            [0,0,0,1]
-        ]
         VoxNode.instances[node_id] = self
 
     @staticmethod
     def initialize():
         VoxNode.instances = {}
-        VoxNode.top_level_nodes = []
+        VoxNode._top_nodes = None
 
     @staticmethod
     def get(node_id):
         return VoxNode.instances[node_id]
 
     @staticmethod
-    def get_or_create_node(node_id, register_new_as_top=False):
+    def get_top_nodes():
+        if VoxNode.__top_nodes is None:
+            # Figure out which VoxTransforms are top nodes.
+            all_transforms = set()
+            child_transforms = set()
+            for node in VoxNode.instances.values():
+                if isinstance(node, VoxTransform):
+                    all_transforms.add(node)
+                elif isinstance(node, VoxGroup):
+                    for child in node.children:
+                        child_transforms.add(child)
+            VoxNode.__top_nodes = list(all_transforms - child_transforms)
+
+        return VoxNode.__top_nodes
+
+    @staticmethod
+    def get_or_create_node(node_id):
+        raise NotImplementedError("Subclasses must implement this function.")
+
+
+class VoxTransform(VoxNode):
+    def __init__(self, node_id):
+        super(VoxTransform, self).__init__(node_id)
+        self.position = None
+        self.child_id = None
+        self.transform = [
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ]
+
+    def get_child(self):
+        return VoxNode.get(self.child_id)
+
+    @staticmethod
+    def get_or_create_node(node_id):
         if node_id in VoxNode.instances:
             return VoxNode.instances[node_id]
         else:
-            node = VoxNode(node_id)
-            if register_new_as_top:
-                VoxNode.top_nodes.append(node)
-            return node
+            return VoxTransform(node_id)
+
+
+class VoxGroup(VoxNode):
+    def __init__(self, node_id):
+        super(VoxGroup, self).__init__(node_id)
+        self.children = []
+
+    @staticmethod
+    def get_or_create_node(node_id):
+        if node_id in VoxNode.instances:
+            return VoxNode.instances[node_id]
+        else:
+            return VoxGroup(node_id)
+
+
+class VoxShape(VoxNode):
+    def __init__(self, node_id):
+        super(VoxShape, self).__init__(node_id)
+        self.model = None
+
+    @staticmethod
+    def get_or_create_node(node_id):
+        if node_id in VoxNode.instances:
+            return VoxNode.instances[node_id]
+        else:
+            return VoxShape(node_id)
 
 
 class VoxModel(object):
@@ -280,7 +332,6 @@ class VoxModel(object):
         self.model_id = model_id
         self.size = size
         self.voxels = []
-        self.shape = None
         self.meshes = {}
         VoxModel.instances[model_id] = self
 

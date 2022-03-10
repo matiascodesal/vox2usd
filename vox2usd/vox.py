@@ -1,6 +1,6 @@
 import struct
 
-from pxr import Usd, UsdShade, Gf, Sdf
+from pxr import UsdShade, Gf, Sdf
 
 VOX_MAX_DICT_KEY_VALUE_PAIRS = 256
 
@@ -76,9 +76,9 @@ class VoxReader(object):
                     # TODO: assert (reserved_id == UINT32_MAX & & num_frames == 1); // must be these values according to the spec
                     frame_dict = self.__read_vox_dict()
                     if frame_dict and "_t" in frame_dict:
-                        node.position = [float(component) for component in frame_dict["_t"].split()]
-                        node.transform[3] = [node.position[0], node.position[1], node.position[2], 1]
-                        print("xform", node_id, node.position)
+                        translate = [float(component) for component in frame_dict["_t"].split()]
+                        translate.append(1)
+                        node.transform[3] = translate
 
                     if frame_dict and "_r" in frame_dict:
                         """
@@ -234,15 +234,6 @@ _trans= 0-1
 """
 
 
-class Voxel(object):
-    def __init__(self, x, y, z, mtl_id):
-        self.x = x
-        self.y = y
-        self.z = z
-        self.mtl_id = mtl_id
-        self.position = [x, y, z]
-
-
 class VoxNode(object):
     instances = {}
     __top_nodes = None
@@ -284,7 +275,6 @@ class VoxNode(object):
 class VoxTransform(VoxNode):
     def __init__(self, node_id):
         super(VoxTransform, self).__init__(node_id)
-        self.position = None
         self.child_id = None
         self.transform = [
             [1, 0, 0, 0],

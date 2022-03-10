@@ -6,8 +6,7 @@
 import os
 import inspect
 
-import numpy as np
-from pxr import Usd, UsdGeom, UsdShade, Gf, Sdf, Kind, Vt, Tf
+from pxr import Usd, UsdGeom, UsdShade, Gf, Sdf, Kind, Vt
 
 from vox2usd.vox import VoxReader, VoxModel, VoxNode, VoxTransform, VoxGroup, VoxShape, VoxBaseMaterial, VoxGlassMaterial
 

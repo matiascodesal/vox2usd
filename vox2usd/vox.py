@@ -102,15 +102,14 @@ class VoxReader(object):
                         5   : 1 : the sign in the second row (0 : positive; 1 : negative)
                         6   : 1 : the sign in the third row (0 : positive; 1 : negative)
                         """
-                        # TODO: Figure out why rotation is wrong
                         packed_rot_matrix = int(frame_dict["_r"])
                         row1_index = packed_rot_matrix >> 0 & 3
                         row2_index = packed_rot_matrix >> 2 & 3
                         # derive row3 index since all three indices must be used [0,1,2]
                         row3_index = 3 - row1_index - row2_index
-                        row1_value = 1 if packed_rot_matrix & 8 == 0 else -1
-                        row2_value = 1 if packed_rot_matrix & 16 == 0 else -1
-                        row3_value = 1 if packed_rot_matrix & 32 == 0 else -1
+                        row1_value = 1 if packed_rot_matrix & (1 << 4) == 0 else -1
+                        row2_value = 1 if packed_rot_matrix & (1 << 5) == 0 else -1
+                        row3_value = 1 if packed_rot_matrix & (1 << 6) == 0 else -1
                         row1 = [0] * 3
                         row1[row1_index] = row1_value
                         row2 = [0] * 3
@@ -121,6 +120,11 @@ class VoxReader(object):
                         node.transform[0] = [row1[0], row2[0], row3[0], 0]
                         node.transform[1] = [row1[1], row2[1], row3[1], 0]
                         node.transform[2] = [row1[2], row2[2], row3[2], 0]
+                        print ("Node {} Transform".format(node.node_id))
+                        print(node.transform[0])
+                        print(node.transform[1])
+                        print(node.transform[2])
+                        print(node.transform[3])
                     print("frame_dict", frame_dict)
                     if frame_dict is not None:
                         pass

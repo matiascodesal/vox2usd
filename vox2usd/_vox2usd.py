@@ -1,6 +1,12 @@
+
+# TODO: Figure out MV instancing (Ref)
+# TODO: add script args (input path, output path, etc)
+# TODO: Add variants
+
 import os
 import inspect
 
+import numpy as np
 from pxr import Usd, UsdGeom, UsdShade, Gf, Sdf, Kind, Vt, Tf
 
 from vox2usd.vox import VoxReader, VoxModel, VoxNode, VoxTransform, VoxGroup, VoxShape, VoxBaseMaterial, VoxGlassMaterial
@@ -357,7 +363,7 @@ class Vox2UsdConverter(object):
         VoxReader(self.vox_file_path).read()
 
         self.asset_name = os.path.splitext(os.path.basename(self.vox_file_path))[0]
-        self.stage = Usd.Stage.CreateNew(os.path.join(r"C:\temp", "{}.usda".format(self.asset_name)))
+        self.stage = Usd.Stage.CreateNew(os.path.join(r"C:\temp", "test_data", "{}.usda".format(self.asset_name)))
         UsdGeom.SetStageUpAxis(self.stage, UsdGeom.Tokens.z)
         UsdGeom.SetStageMetersPerUnit(self.stage, 1.0)
         asset_prim = UsdGeom.Xform.Define(self.stage, "/" + self.asset_name)
@@ -418,8 +424,17 @@ class Vox2UsdConverter(object):
         # My pivots are always at the bottom of the model.
         xform_attr = xformable.GetPrim().GetAttribute("xformOp:transform")
         curr_xform = xform_attr.Get()
-        bottom_pivot = [curr_xform[3][0], curr_xform[3][1], curr_xform[3][2] - vox_model.size[2] / 2.0, 1]
-        curr_xform.SetRow(3, Gf.Vec4d(*bottom_pivot))
+        # Need to figure out the local
+        up_vector = curr_xform * Gf.Vec4d(0,0,1,1)
+        up_vector = Gf.Vec3d(up_vector[0:3]).GetNormalized()
+        # copy bottom row of matrix since index operator is read only on Matrix4d
+        trans_row = curr_xform[3]
+        for index in range(3):
+            if up_vector[index] != 0:
+                trans_row[index] = trans_row[index] - int(vox_model.size[2] / 2.0)
+                break
+
+        curr_xform.SetRow(3, Gf.Vec4d(*trans_row))
         xform_attr.Set(curr_xform)
 
     def __create_mesh_per_mtl(self, xform_node, shape_node, parent_prim):
@@ -441,7 +456,6 @@ class Vox2UsdConverter(object):
             # merge meshes to create geomsubsets
             vertices = []
             total_face_count = 0
-            indices = []
             display_colors = []
             opacity = []
             subsets = []
@@ -498,6 +512,8 @@ class Vox2UsdConverter(object):
             cube = UsdGeom.Cube.Define(self.stage,
                                        proto_container.GetPath().AppendPath("Voxel_{}".format(mtl_display_id)))
             cube.CreateSizeAttr(self.voxel_size)
+            # Move voxel pivot to the front-bottom-left like MV
+            cube.AddTranslateOp().Set(Gf.Vec3f(0.5,0.5,0.5))
             if self.use_physics:
                 physics_apis = Sdf.TokenListOp.Create(["PhysicsRigidBodyAPI", "PhysicsCollisionAPI"])
                 cube_prim = cube.GetPrim()
@@ -520,8 +536,8 @@ class Vox2UsdConverter(object):
             ids.append(mtl2proto_id[voxel[3]])
             position = [float(coord) * self.voxel_spacing for coord in voxel[:3]]
             # XY center the local origin on the model
-            position = [position[0] - shape_node.model.size[0] / 2.0,
-                        position[1] - shape_node.model.size[1] / 2.0,
+            position = [position[0] - int(shape_node.model.size[0] / 2.0),
+                        position[1] - int(shape_node.model.size[1] / 2.0),
                         position[2]]
             positions.append(position)
         instancer.CreateProtoIndicesAttr()
@@ -547,4 +563,4 @@ def create_omni_mtl(stage, looks_scope, name, vox_mtl):
 
 
 if __name__ == '__main__':
-    Vox2UsdConverter(r"C:\temp\cars.vox", use_palette=True, use_physics=False, use_point_instancing=False, use_omni_mtls=False).convert()
+    Vox2UsdConverter(r"C:\temp\test_data\rotations_test.vox", use_palette=True, use_physics=False, use_point_instancing=True, use_omni_mtls=False).convert()

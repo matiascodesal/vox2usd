@@ -82,63 +82,63 @@ class Vox2UsdConverter(object):
                 # Because, MV only translates on whole values, we need to round or floor the for odd numbered dimensions.
                 model_half_x = int(model.size[0] / 2.0)
                 model_half_y = int(model.size[1] / 2.0)
-                half = self.voxel_size / 2.0
+                model_half_z = int(model.size[2] / 2.0)
                 working_is_glass = type(VoxBaseMaterial.get(mtl_id)) == VoxGlassMaterial
                 for voxel in voxels:
                     front = (voxel[0], voxel[1] - 1, voxel[2])
                     if front not in pos_sorted_voxels or (
                             type(pos_sorted_voxels[front]) == VoxGlassMaterial and not working_is_glass):
-                        front_face = [(voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
-                                      (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
-                                      (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half),
-                                      (voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half)]
+                        front_face = [(voxel[0] - model_half_x, voxel[1] - model_half_y, voxel[2] - model_half_z),
+                                      (voxel[0] + self.voxel_size - model_half_x, voxel[1] - model_half_y, voxel[2] - model_half_z),
+                                      (voxel[0] + self.voxel_size - model_half_x, voxel[1] - model_half_y, voxel[2] + self.voxel_size - model_half_z),
+                                      (voxel[0] - model_half_x, voxel[1] - model_half_y, voxel[2] + self.voxel_size - model_half_z)]
 
                         model.meshes[mtl_id].extend(front_face)
 
                     back = (voxel[0], voxel[1] + 1, voxel[2])
                     if back not in pos_sorted_voxels or (
                             type(pos_sorted_voxels[back]) == VoxGlassMaterial and not working_is_glass):
-                        back_face = [(voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
-                                     (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
-                                     (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half),
-                                     (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half)]
+                        back_face = [(voxel[0] + self.voxel_size - model_half_x, voxel[1] + self.voxel_size - model_half_y, voxel[2] - model_half_z),
+                                     (voxel[0] - model_half_x, voxel[1] + self.voxel_size - model_half_y, voxel[2] - model_half_z),
+                                     (voxel[0] - model_half_x, voxel[1] + self.voxel_size - model_half_y, voxel[2] + self.voxel_size - model_half_z),
+                                     (voxel[0] + self.voxel_size - model_half_x, voxel[1] + self.voxel_size - model_half_y, voxel[2] + self.voxel_size - model_half_z)]
                         model.meshes[mtl_id].extend(back_face)
 
                     right = (voxel[0] + 1, voxel[1], voxel[2])
                     if right not in pos_sorted_voxels or (
                             type(pos_sorted_voxels[right]) == VoxGlassMaterial and not working_is_glass):
-                        right_face = [(voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
-                                      (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
-                                      (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half),
-                                      (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half)]
+                        right_face = [(voxel[0] + self.voxel_size - model_half_x, voxel[1] - model_half_y, voxel[2] - model_half_z),
+                                      (voxel[0] + self.voxel_size - model_half_x, voxel[1] + self.voxel_size - model_half_y, voxel[2] - model_half_z),
+                                      (voxel[0] + self.voxel_size - model_half_x, voxel[1] + self.voxel_size - model_half_y, voxel[2] + self.voxel_size - model_half_z),
+                                      (voxel[0] + self.voxel_size - model_half_x, voxel[1] - model_half_y, voxel[2] + self.voxel_size - model_half_z)]
                         model.meshes[mtl_id].extend(right_face)
 
                     left = (voxel[0] - 1, voxel[1], voxel[2])
                     if left not in pos_sorted_voxels or (
                             type(pos_sorted_voxels[left]) == VoxGlassMaterial and not working_is_glass):
-                        left_face = [(voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
-                                     (voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
-                                     (voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half),
-                                     (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half)]
+                        left_face = [(voxel[0] - model_half_x, voxel[1] + self.voxel_size - model_half_y, voxel[2] - model_half_z),
+                                     (voxel[0] - model_half_x, voxel[1] - model_half_y, voxel[2] - model_half_z),
+                                     (voxel[0] - model_half_x, voxel[1] - model_half_y, voxel[2] + self.voxel_size - model_half_z),
+                                     (voxel[0] - model_half_x, voxel[1] + self.voxel_size - model_half_y, voxel[2] + self.voxel_size - model_half_z)]
                         model.meshes[mtl_id].extend(left_face)
 
                     top = (voxel[0], voxel[1], voxel[2] + 1)
                     if top not in pos_sorted_voxels or (
                             type(pos_sorted_voxels[top]) == VoxGlassMaterial and not working_is_glass):
-                        top_face = [(voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half),
-                                    (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] + half),
-                                    (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half),
-                                    (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] + half)]
+                        top_face = [(voxel[0] - model_half_x, voxel[1] - model_half_y, voxel[2] + self.voxel_size - model_half_z),
+                                    (voxel[0] + self.voxel_size - model_half_x, voxel[1] - model_half_y, voxel[2] + self.voxel_size - model_half_z),
+                                    (voxel[0] + self.voxel_size - model_half_x, voxel[1] + self.voxel_size - model_half_y, voxel[2] + self.voxel_size - model_half_z),
+                                    (voxel[0] - model_half_x, voxel[1] + self.voxel_size - model_half_y, voxel[2] + self.voxel_size - model_half_z)]
                         model.meshes[mtl_id].extend(top_face)
 
                     bottom = (voxel[0], voxel[1], voxel[2] - 1)
                     if bottom not in pos_sorted_voxels or (
                             type(pos_sorted_voxels[bottom]) == VoxGlassMaterial and not working_is_glass):
                         bottom_face = [
-                            (voxel[0] + half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
-                            (voxel[0] - half - model_half_x, voxel[1] - half - model_half_y, voxel[2] - half),
-                            (voxel[0] - half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half),
-                            (voxel[0] + half - model_half_x, voxel[1] + half - model_half_y, voxel[2] - half)]
+                            (voxel[0] + self.voxel_size - model_half_x, voxel[1] - model_half_y, voxel[2] - model_half_z),
+                            (voxel[0] - model_half_x, voxel[1] - model_half_y, voxel[2] - model_half_z),
+                            (voxel[0] - model_half_x, voxel[1] + self.voxel_size - model_half_y, voxel[2] - model_half_z),
+                            (voxel[0] + self.voxel_size - model_half_x, voxel[1] + self.voxel_size - model_half_y, voxel[2] - model_half_z)]
                         model.meshes[mtl_id].extend(bottom_face)
 
     def calculate_greedy_meshes(self):
@@ -225,17 +225,19 @@ class Vox2UsdConverter(object):
                     Returns:
 
                     """
-                    # TODO: IDK why getting the floor of this works.  Otherwise, I get cracks between models
+
+                    # MV model pivot is centered, so we need to center the generated mesh
+                    # by subtracting half the width, height, and depth.
                     model_half_x = int(model.size[0] / 2.0)
                     model_half_y = int(model.size[1] / 2.0)
-                    half = self.voxel_size / 2.0
+                    model_half_z = int(model.size[2] / 2.0)
                     merged_face = None
                     if side == VoxelSides.FRONT:
                         merged_face = [
                             (run_start[0], w, run_start[1]),
-                            (run_end[0] + 1, w, run_start[1]),
-                            (run_end[0] + 1, w, run_end[1] + 1),
-                            (run_start[0], w, run_end[1] + 1)
+                            (run_end[0] + self.voxel_size, w, run_start[1]),
+                            (run_end[0] + self.voxel_size, w, run_end[1] + self.voxel_size),
+                            (run_start[0], w, run_end[1] + self.voxel_size)
                         ]
                     elif side == VoxelSides.BACK:
                         merged_face = [
@@ -282,7 +284,7 @@ class Vox2UsdConverter(object):
                         merged_face[vert_id] = (
                             merged_face[vert_id][0] - model_half_x,
                             merged_face[vert_id][1] - model_half_y,
-                            merged_face[vert_id][2]
+                            merged_face[vert_id][2] - model_half_z
                         )
 
                     return merged_face
@@ -352,7 +354,6 @@ class Vox2UsdConverter(object):
 
                 model.meshes[mtl_id] = greedy_faces
 
-
     def convert(self):
         print("\nImporting voxel file {}\n".format(self.vox_file_path))
 
@@ -370,6 +371,7 @@ class Vox2UsdConverter(object):
         self.geometry_scope = UsdGeom.Scope.Define(self.stage, asset_prim.GetPath().AppendPath(GEOMETRY_SCOPE_NAME))
         self.looks_scope = UsdGeom.Scope.Define(self.stage, asset_prim.GetPath().AppendPath(LOOKS_SCOPE_NAME))
 
+        #self.calculate_simple_meshes()
         self.calculate_greedy_meshes()
 
         self.used_mtls = {}
@@ -419,8 +421,9 @@ class Vox2UsdConverter(object):
             raise RuntimeError("Expected VoxTransform node. Got {}.".format(node.__class__))
 
     def __set_pivot(self, vox_model, xformable):
-        # Undo extra vertical translation that MV adds to all models
-        # My pivots are always at the bottom of the model.
+        # TODO: This doesn't actually work for rotated models. The pivot doesn't end up at the bottom
+        # MV pivot is that the center. I prefer to have it at the bottom.
+        # I'm tweaking the translation here to counteract that.
         xform_attr = xformable.GetPrim().GetAttribute("xformOp:transform")
         curr_xform = xform_attr.Get()
         # Need to figure out the local
@@ -436,22 +439,17 @@ class Vox2UsdConverter(object):
         curr_xform.SetRow(3, Gf.Vec4d(*trans_row))
         xform_attr.Set(curr_xform)
 
-    def __create_mesh_per_mtl(self, xform_node, shape_node, parent_prim):
-        xform = UsdGeom.Xform.Define(self.stage, parent_prim.GetPath().AppendPath("VoxelModel_{}".format(shape_node.node_id)))
-        xform.AddTransformOp().Set(Gf.Matrix4d(*xform_node.transform))
-        self.__set_pivot(shape_node.model, xform)
-        for mtl_id, mesh_verts in shape_node.model.meshes.items():
-            mtl_display_id = VoxBaseMaterial.get(mtl_id).get_display_id()
-            mesh = UsdGeom.Mesh.Define(self.stage, xform.GetPath().AppendPath("VoxelPart_{}".format(mtl_display_id)))
-            mesh.CreatePointsAttr(mesh_verts)
-            face_count = int(len(mesh_verts) / 4.0)
-            self.total_triangles += face_count * 2
-            mesh.CreateFaceVertexCountsAttr([4]*face_count)
-            mesh.CreateFaceVertexIndicesAttr(list(range(len(mesh_verts))))
-            if self.use_palette:
-                UsdShade.MaterialBindingAPI(mesh).Bind(self.used_mtls[mtl_id])
+    def __fill_mesh_and_bind_mtl(self, shape_node, mesh):
+        mtl_id, mesh_verts = shape_node.model.meshes.items()[0]
+        mesh.CreatePointsAttr(mesh_verts)
+        face_count = int(len(mesh_verts) / 4.0)
+        self.total_triangles += face_count * 2
+        mesh.CreateFaceVertexCountsAttr([4]*face_count)
+        mesh.CreateFaceVertexIndicesAttr(list(range(len(mesh_verts))))
+        if self.use_palette:
+            UsdShade.MaterialBindingAPI(mesh).Bind(self.used_mtls[mtl_id])
 
-    def __create_geom_subset_per_mtl(self, xform_node, shape_node, parent_prim):
+    def __create_geom_subset_per_mtl(self, shape_node, mesh):
             # merge meshes to create geomsubsets
             vertices = []
             total_face_count = 0
@@ -472,10 +470,6 @@ class Vox2UsdConverter(object):
                     opacity.extend([1.0] * face_count)
                 subsets.append({"mtl_id": mtl_id, "start_idx": start_idx, "end_idx": end_idx})
 
-            mesh = UsdGeom.Mesh.Define(self.stage,
-                                       parent_prim.GetPath().AppendPath("VoxelModel_{}".format(shape_node.node_id)))
-            mesh.AddTransformOp().Set(Gf.Matrix4d(*xform_node.transform))
-            self.__set_pivot(shape_node.model, mesh)
             mesh.CreatePointsAttr(vertices)
             mesh.CreateFaceVertexCountsAttr([4] * total_face_count)
             mesh.CreateFaceVertexIndicesAttr(list(range(len(vertices))))
@@ -493,14 +487,19 @@ class Vox2UsdConverter(object):
 
     def __voxels2meshes(self, xform_node, shape_node, parent_prim):
         self.total_voxels += len(shape_node.model.voxels)
-        self.__create_geom_subset_per_mtl(xform_node, shape_node, parent_prim)
-        # self.__create_mesh_per_mtl(xform_node, shape_node, parent_prim)
+        mesh = UsdGeom.Mesh.Define(self.stage, parent_prim.GetPath().AppendPath("VoxelModel_{}".format(shape_node.node_id)))
+        mesh.AddTransformOp().Set(Gf.Matrix4d(*xform_node.transform))
+        # self.__set_pivot(shape_node.model, mesh)
+        if len(shape_node.model.meshes.keys()) > 1:
+            self.__create_geom_subset_per_mtl(shape_node, mesh)
+        else:
+            self.__fill_mesh_and_bind_mtl(shape_node, mesh)
 
     def __voxels2point_instances(self, xform_node, shape_node, parent_prim):
         instancer = UsdGeom.PointInstancer.Define(self.stage, parent_prim.GetPath().AppendPath(
             "VoxModel_{}".format(shape_node.node_id)))
         instancer.AddTransformOp().Set(Gf.Matrix4d(*xform_node.transform))
-        self.__set_pivot(shape_node.model, instancer)
+        # self.__set_pivot(shape_node.model, instancer)
         instancer.CreatePrototypesRel()
         proto_container = self.stage.OverridePrim(instancer.GetPath().AppendPath("Prototypes"))
         mtl2proto_id = {}
@@ -511,7 +510,7 @@ class Vox2UsdConverter(object):
             cube = UsdGeom.Cube.Define(self.stage,
                                        proto_container.GetPath().AppendPath("Voxel_{}".format(mtl_display_id)))
             cube.CreateSizeAttr(self.voxel_size)
-            # Move voxel pivot to the front-bottom-left like MV
+            # Move voxel pivot to the front-bottom-left like MV voxels
             cube.AddTranslateOp().Set(Gf.Vec3f(0.5,0.5,0.5))
             if self.use_physics:
                 physics_apis = Sdf.TokenListOp.Create(["PhysicsRigidBodyAPI", "PhysicsCollisionAPI"])
@@ -537,7 +536,7 @@ class Vox2UsdConverter(object):
             # XY center the local origin on the model
             position = [position[0] - int(shape_node.model.size[0] / 2.0),
                         position[1] - int(shape_node.model.size[1] / 2.0),
-                        position[2]]
+                        position[2] - int(shape_node.model.size[2] / 2.0)]
             positions.append(position)
         instancer.CreateProtoIndicesAttr()
         instancer.CreatePositionsAttr()

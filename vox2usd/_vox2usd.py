@@ -523,7 +523,7 @@ class Vox2UsdConverter(object):
         vox_mtl = VoxBaseMaterial.get(mtl_display_id)
         geom.CreateDisplayColorAttr([vox_mtl.color[0:3]])
         if isinstance(vox_mtl, VoxGlassMaterial):
-            geom.CreateDisplayOpacityAttr(vox_mtl.get_opacity())
+            geom.CreateDisplayOpacityAttr([vox_mtl.get_opacity()])
         if self.use_physics:
             physics_apis = Sdf.TokenListOp.Create(["PhysicsRigidBodyAPI", "PhysicsCollisionAPI"])
             shape_prim = geom.GetPrim()
@@ -584,4 +584,4 @@ class Vox2UsdConverter(object):
 
 
 if __name__ == '__main__':
-    Vox2UsdConverter(r"C:\temp\test_data\rotations_test.vox", use_physics=False).convert()
+    Vox2UsdConverter(r"C:\temp\test_data\cop_car.vox", use_physics=False).convert()

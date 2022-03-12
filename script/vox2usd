@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+
+if __name__ == "__main__":
+    import argparse
+    import os
+    import sys
+
+    descr = __doc__.strip()
+    parser = argparse.ArgumentParser(prog=os.path.basename(sys.argv[0]),
+                                     description=descr)
+    parser.add_argument('assetName')
+    parser.add_argument('variantFiles', nargs='+')
+    parser.add_argument(
+        '-k', '--kind', default='component', action='store', metavar='kind',
+        help="Model kind, one of: component, group, or assembly")
+    parser.add_argument(
+        '-v', '--variantSet', default='', action='store', metavar='variantSet',
+        help="Variantset to create to modulate variantFiles. Can be elided "
+             "if only one file is supplied")
+    parser.add_argument(
+        '-i', '--identifier', default='', action='store', metavar='identifier',
+        help="The identifier you would expect your Ar asset-resolver plugin "
+             "to resolve to the (installed) assetName.usd file this script creates. "
+             " If unspecified, defaults to assetName.usd")
+    parser.add_argument(
+        '-d', '--defaultVariantSelection', default='', action='store',
+        metavar='defaultVariantSelection',
+        help="This variant will be selected by default when the asset is "
+             "added to a composition.  If unspecified, will be the variant for "
+             "'variantFile1'")
+
+    args = parser.parse_args()
+
+    if not args.assetName or args.assetName == '':
+        parser.error("No assetName specified")
+
+    stage = CreateModelStage(args.assetName,
+                             assetIdentifier=args.identifier,
+                             kind=args.kind,
+                             filesToReference=args.variantFiles,
+                             variantSetName=args.variantSet,
+                             defaultVariantSelection=args.defaultVariantSelection)
+
+    if stage:
+        stage.GetRootLayer().Save()
+        exit(0)
+    else:
+        exit(1)

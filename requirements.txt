@@ -1,4 +1,1 @@
-#scikit-image
-numpy
-scipy
-PyMCubes
+usd-core

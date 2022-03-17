@@ -320,17 +320,16 @@ class Vox2UsdConverter(object):
 
     def create_material(self, stage, looks_scope, name, vox_mtl):
         mtl = UsdShade.Material.Define(stage, looks_scope.GetPath().AppendPath(name))
-
         self.shader_varset.SetVariantSelection(ShaderVariantSetNames.PREVIEW)
         with self.shader_varset.GetVariantEditContext():
             prvw_shader = UsdShade.Shader.Define(stage, mtl.GetPath().AppendPath("prvw_shader"))
             prvw_shader = vox_mtl.populate_usd_preview_surface(prvw_shader)
-            mtl.CreateSurfaceOutput().ConnectToSource(prvw_shader, "surface")
+            mtl.CreateSurfaceOutput().ConnectToSource(prvw_shader.ConnectableAPI(), "surface")
         self.shader_varset.SetVariantSelection(ShaderVariantSetNames.OMNIVERSE)
         with self.shader_varset.GetVariantEditContext():
             omni_shader = UsdShade.Shader.Define(stage, mtl.GetPath().AppendPath("omni_shader"))
             omni_shader = vox_mtl.populate_omni_shader(omni_shader)
-            mtl.CreateSurfaceOutput().ConnectToSource(omni_shader, "surface")
+            mtl.CreateSurfaceOutput().ConnectToSource(omni_shader.ConnectableAPI(), "surface")
 
         return mtl
 
@@ -588,4 +587,4 @@ class Vox2UsdConverter(object):
 
 
 if __name__ == '__main__':
-    Vox2UsdConverter(r"C:\temp\test_data\blk_mage.vox", use_physics=False).convert()
+    Vox2UsdConverter(r"C:\temp\test_data\cop_car.vox", use_physics=False).convert()

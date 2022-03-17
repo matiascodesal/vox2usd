@@ -5,6 +5,8 @@
 # TODO: Write geo data to usdc and payload
 # TODO: Only create relevant prototypes for each instancer
 # TODO: Get rid of omni info:id errors
+# TODO: Compute bboxes
+
 
 import os
 
@@ -345,6 +347,7 @@ class Vox2UsdConverter(object):
         UsdGeom.SetStageUpAxis(self.stage, UsdGeom.Tokens.z)
         UsdGeom.SetStageMetersPerUnit(self.stage, 1.0)
         asset_geom = UsdGeom.Xform.Define(self.stage, "/" + self.asset_name)
+        self.stage.SetDefaultPrim(asset_geom.GetPrim())
         Usd.ModelAPI(asset_geom).SetKind(Kind.Tokens.component)
         self.geometry_scope = UsdGeom.Scope.Define(self.stage, asset_geom.GetPath().AppendPath(GEOMETRY_SCOPE_NAME))
         self.looks_scope = UsdGeom.Scope.Define(self.stage, asset_geom.GetPath().AppendPath(LOOKS_SCOPE_NAME))
@@ -459,6 +462,8 @@ class Vox2UsdConverter(object):
                 start_idx = len(vertices)
                 vertices.extend(mesh_verts)
                 end_idx = len(vertices)
+                start_face_idx = int(start_idx / 4)
+                end_face_idx = int(end_idx / 4)
                 face_count = int(len(mesh_verts) / 4.0)
                 total_face_count += face_count
                 vox_mtl = VoxBaseMaterial.get(mtl_id)
@@ -467,7 +472,7 @@ class Vox2UsdConverter(object):
                     opacity.extend([vox_mtl.get_opacity()] * face_count)
                 else:
                     opacity.extend([1.0] * face_count)
-                subsets.append({"mtl_id": mtl_id, "start_idx": start_idx, "end_idx": end_idx})
+                subsets.append({"mtl_id": mtl_id, "start_face_idx": start_face_idx, "end_face_idx": end_face_idx})
 
             mesh.CreatePointsAttr(vertices)
             mesh.CreateFaceVertexCountsAttr([4] * total_face_count)
@@ -478,8 +483,7 @@ class Vox2UsdConverter(object):
             mesh_binding_api = UsdShade.MaterialBindingAPI(mesh.GetPrim())
             for item in subsets:
                 subset = mesh_binding_api.CreateMaterialBindSubset("VoxelPart_{}".format(item["mtl_id"]),
-                                                                   Vt.IntArray(
-                                                                       list(range(item["start_idx"], item["end_idx"]))))
+                                                                   Vt.IntArray(list(range(item["start_face_idx"], item["end_face_idx"]))))
                 UsdShade.MaterialBindingAPI(subset.GetPrim()).Bind(self.used_mtls[item["mtl_id"]])
 
             self.total_triangles += total_face_count * 2
@@ -584,4 +588,4 @@ class Vox2UsdConverter(object):
 
 
 if __name__ == '__main__':
-    Vox2UsdConverter(r"C:\temp\test_data\cop_car.vox", use_physics=False).convert()
+    Vox2UsdConverter(r"C:\temp\test_data\blk_mage.vox", use_physics=False).convert()

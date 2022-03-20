@@ -1,0 +1,32 @@
+#!/usr/bin/env python
+
+"""
+Translates a vox file into a USD component model.Voxels are translated
+into point instances shapes and merged meshes per material. Materials are
+translated into UsdPreviewSurface and NVIDIA Omniverse materials.
+"""
+
+if __name__ == "__main__":
+    import argparse
+    import os
+    import sys
+
+    from vox2usd import Vox2UsdConverter
+
+    descr = __doc__.strip()
+    parser = argparse.ArgumentParser(prog=os.path.basename(sys.argv[0]),
+                                     description=descr)
+    parser.add_argument('vox_file')
+    parser.add_argument(
+        '-fl', '--flatten', action='store_true', help="Output as a single usdc file.")
+    parser.add_argument(
+        '-ph', '--physics', action='store_true', help="Add physics attributes to point shapes.")
+
+    args = parser.parse_args()
+
+    if not os.path.exists(args.vox_file):
+        parser.error("The input vox_file does not exist.")
+
+    vox_converter = Vox2UsdConverter(args.vox_file, use_physics=args.physics,
+                                     flatten=args.flatten)
+    vox_converter.convert()

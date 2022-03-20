@@ -70,7 +70,6 @@ class VoxReader(object):
                     num_frames, = struct.unpack('<i', self.vox_file.read(4))
                     node = VoxTransform.get_or_create_node(node_id)
                     node.child_id = child_node_id
-                    print("xform", node.node_id, child_node_id)
 
                     # TODO: assert (reserved_id == UINT32_MAX & & num_frames == 1); // must be these values according to the spec
                     frame_dict = self.__read_vox_dict()
@@ -119,18 +118,11 @@ class VoxReader(object):
                         node.transform[0] = [row1[0], row2[0], row3[0], 0]
                         node.transform[1] = [row1[1], row2[1], row3[1], 0]
                         node.transform[2] = [row1[2], row2[2], row3[2], 0]
-                        print ("Node {} Transform".format(node.node_id))
-                        print(node.transform[0])
-                        print(node.transform[1])
-                        print(node.transform[2])
-                        print(node.transform[3])
-                    print("frame_dict", frame_dict)
                     if frame_dict is not None:
                         pass
                 elif name == 'nGRP':
                     node_id, = struct.unpack('<i', self.vox_file.read(4))
                     node_dict = self.__read_vox_dict()
-                    print("node_dict", node_dict)
                     # node dict is unused
                     assert (node_dict is None)
                     num_children, = struct.unpack('<i', self.vox_file.read(4))
@@ -138,7 +130,6 @@ class VoxReader(object):
                     node = VoxGroup.get_or_create_node(node_id)
                     for child_id in child_ids:
                         child = VoxTransform.get_or_create_node(child_id)
-                        print(node)
                         node.children.append(child)
                 elif name == 'nSHP':
                     node_id, = struct.unpack('<i', self.vox_file.read(4))
@@ -149,8 +140,6 @@ class VoxReader(object):
                     assert (num_models == 1)  # must be 1 according to spec
                     model_id, = struct.unpack('<i', self.vox_file.read(4))
 
-                    print("node_id", node_id)
-                    print("model_id", model_id)
                     model_dict = self.__read_vox_dict()
                     shape = VoxShape.get_or_create_node(node_id)
                     shape.model = VoxModel.get(model_id)

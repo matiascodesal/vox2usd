@@ -13,20 +13,29 @@ from pxr import Usd, UsdGeom, UsdShade, Gf, Sdf, Kind, Vt
 from vox2usd.constants import (GEOMETRY_SCOPE_NAME, LOOKS_SCOPE_NAME, DEFAULT_METERS_PER_VOXEL,
                                GeometryVariantSetNames, PointShapeVariantSetNames, ShaderVariantSetNames, StudMesh)
 from vox2usd._meshing import GreedyMeshing
-from vox2usd.vox import (VoxReader, VoxNode, VoxTransform, VoxGroup, VoxShape, VoxBaseMaterial, VoxGlassMaterial)
+from vox2usd.vox import (VoxReader, VoxTransform, VoxGroup, VoxShape, VoxBaseMaterial, VoxGlassMaterial)
 
 
 class Vox2UsdConverter(object):
-    def __init__(self, filepath, voxel_spacing=DEFAULT_METERS_PER_VOXEL, voxel_size=DEFAULT_METERS_PER_VOXEL,
-                 gamma_correct=True, gamma_value=2.2, join_voxels=False, use_physics=False, flatten=False):
-        self.vox_file_path = filepath
+    def __init__(self, vox_file, voxel_spacing=DEFAULT_METERS_PER_VOXEL, voxel_size=DEFAULT_METERS_PER_VOXEL,
+                 gamma_correct=True, gamma_value=2.2, use_physics=False, flatten=False):
+        self.vox_file_path = vox_file
         self.voxel_spacing = voxel_spacing
         self.voxel_size = voxel_size
         self.gamma_correct = gamma_correct
         self.gamma_value = gamma_value
-        self.join_voxels = join_voxels
         self.use_physics = use_physics
         self.flatten = flatten
+        self.total_voxels = 0
+        self.total_triangles = 0
+        self.used_mtls = {}
+        self.asset_name = os.path.splitext(os.path.basename(self.vox_file_path))[0]
+        self.output_dir = os.path.dirname(self.vox_file_path)
+        self.output_file_name = "{}.usd".format(self.asset_name)
+        self.mesh_payload_identifier = os.path.join(self.output_dir, "{}.mesh.usdc".format(self.asset_name))
+        self.points_payload_identifier = os.path.join(self.output_dir, "{}.points.usdc".format(self.asset_name))
+
+        VoxBaseMaterial.initialize(self.gamma_correct, self.gamma_value)
 
     def create_material(self, stage, looks_scope, name, vox_mtl):
         mtl = UsdShade.Material.Define(stage, looks_scope.GetPath().AppendPath(name))
@@ -48,16 +57,19 @@ class Vox2UsdConverter(object):
 
         import time
         time_start = time.time()
-        VoxBaseMaterial.initialize(self.gamma_correct, self.gamma_value)
         VoxReader(self.vox_file_path).read()
 
-        self.asset_name = os.path.splitext(os.path.basename(self.vox_file_path))[0]
-        self.stage = Usd.Stage.CreateNew(r"C:\temp\test_data\{}.usda".format(self.asset_name))
+
+        stage_layer = Sdf.Layer.CreateNew(os.path.join(self.output_dir, self.output_file_name), args={"format": "usda"})
+        self.stage = Usd.Stage.Open(stage_layer.identifier)
         UsdGeom.SetStageUpAxis(self.stage, UsdGeom.Tokens.z)
         UsdGeom.SetStageMetersPerUnit(self.stage, 1.0)
         asset_geom = UsdGeom.Xform.Define(self.stage, "/" + self.asset_name)
         self.stage.SetDefaultPrim(asset_geom.GetPrim())
-        Usd.ModelAPI(asset_geom).SetKind(Kind.Tokens.component)
+        model_api = Usd.ModelAPI(asset_geom)
+        model_api.SetKind(Kind.Tokens.component)
+        model_api.SetAssetName(self.asset_name)
+        model_api.SetAssetIdentifier(self.output_file_name)
         self.geometry_scope = UsdGeom.Scope.Define(self.stage, asset_geom.GetPath().AppendPath(GEOMETRY_SCOPE_NAME))
         self.looks_scope = UsdGeom.Scope.Define(self.stage, asset_geom.GetPath().AppendPath(LOOKS_SCOPE_NAME))
 
@@ -76,7 +88,6 @@ class Vox2UsdConverter(object):
 
         GreedyMeshing.generate(self.voxel_size)
 
-        self.used_mtls = {}
         for index in VoxBaseMaterial.used_palette_ids:
             mtl = VoxBaseMaterial.get(index)
             mtl = self.create_material(self.stage, self.looks_scope, "VoxelMtl_{}".format(mtl.get_display_id()), mtl)
@@ -91,13 +102,9 @@ class Vox2UsdConverter(object):
             }
 
         print("Start converting")
-        self.total_voxels = 0
-        self.total_triangles = 0
-        print(VoxNode.instances)
-        print(VoxNode.get_top_nodes())
 
-        mesh_stage = Usd.Stage.CreateNew(r"C:\temp\test_data\{}.mesh.usdc".format(self.asset_name))
-        points_stage = Usd.Stage.CreateNew(r"C:\temp\test_data\{}.points.usdc".format(self.asset_name))
+        mesh_stage = Usd.Stage.CreateNew(self.mesh_payload_identifier)
+        points_stage = Usd.Stage.CreateNew(self.points_payload_identifier)
 
         root_xform_node = VoxTransform.get_top_nodes()[0]
         root_group_node = root_xform_node.get_child()
@@ -140,7 +147,7 @@ class Vox2UsdConverter(object):
         if self.flatten:
             self.geo_varset.SetVariantSelection(GeometryVariantSetNames.MERGED_MESHES)
             self.shader_varset.SetVariantSelection(ShaderVariantSetNames.PREVIEW)
-            self.stage.Export(r"C:\temp\test_data\{}.usdc".format(self.asset_name))
+            self.stage.Export(os.path.join(self.output_dir, self.output_file_name), args={"format": "usdc"})
         else:
             self.geo_varset.SetVariantSelection(GeometryVariantSetNames.MERGED_MESHES)
             self.shader_varset.SetVariantSelection(ShaderVariantSetNames.OMNIVERSE)
@@ -167,7 +174,6 @@ class Vox2UsdConverter(object):
                 UsdShade.MaterialBindingAPI(target_prim).Bind(mtl)
 
     def __convert_node(self, stage, node, parent_prim, geom_type):
-        print("node_id", node.node_id)
         if isinstance(node, VoxTransform):
             xform_child = node.get_child()
             if isinstance(xform_child, VoxGroup):
@@ -193,7 +199,7 @@ class Vox2UsdConverter(object):
         xform_attr = xformable.GetPrim().GetAttribute("xformOp:transform")
         curr_xform = xform_attr.Get()
         # Need to figure out the local
-        up_vector = curr_xform * Gf.Vec4d(0,0,1,1)
+        up_vector = curr_xform * Gf.Vec4d(0, 0, 1, 1)
         up_vector = Gf.Vec3d(up_vector[0:3]).GetNormalized()
         # copy bottom row of matrix since index operator is read only on Matrix4d
         trans_row = curr_xform[3]
@@ -350,7 +356,6 @@ class Vox2UsdConverter(object):
         ids = []
         positions = []
         for voxel in shape_node.model.voxels:
-            # self.total_voxels += 1
             mtl_id = voxel[3]
             if mtl_id not in mtl2proto_id:
                 mtl2proto_id[mtl_id] = len(proto_container.GetChildren())
@@ -378,4 +383,4 @@ class Vox2UsdConverter(object):
 
 
 if __name__ == '__main__':
-    Vox2UsdConverter(r"C:\temp\test_data\house.vox", use_physics=False, flatten=False).convert()
+    Vox2UsdConverter(r"C:\temp\test_data\geomsubsets.vox", use_physics=False, flatten=False).convert()

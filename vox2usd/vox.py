@@ -3,7 +3,6 @@ import struct
 from pxr import UsdShade, Gf, Sdf
 
 VOX_MAX_DICT_KEY_VALUE_PAIRS = 256
-
 OMNI_ROUGHNESS_SCALAR = 1
 OMNI_EMISSIVE_INTENSITY_SCALAR = 20000
 
@@ -214,7 +213,8 @@ class VoxReader(object):
             key, = struct.unpack('{}s'.format(key_str_size), self.vox_file.read(key_str_size))
             value_str_size, = struct.unpack('<i', self.vox_file.read(4))
             value, = struct.unpack('{}s'.format(value_str_size), self.vox_file.read(value_str_size))
-            data[key] = value
+            # For Python3, need to explicitly decode byte string
+            data[key.decode("utf-8")] = value.decode("utf-8")
 
         return data or None
 

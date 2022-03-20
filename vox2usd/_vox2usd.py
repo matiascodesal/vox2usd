@@ -2,7 +2,6 @@
 # TODO: Figure out MV instancing (Ref)
 # TODO: add script args (input path, output path, etc)
 # TODO: Should I rotate studs to always point up?
-# TODO: Only create relevant prototypes for each instancer
 # TODO: Get rid of omni info:id errors
 # TODO: Compute bboxes
 
@@ -17,7 +16,6 @@ from vox2usd._meshing import GreedyMeshing
 from vox2usd.vox import (VoxReader, VoxNode, VoxTransform, VoxGroup, VoxShape, VoxBaseMaterial, VoxGlassMaterial)
 
 
-
 class Vox2UsdConverter(object):
     def __init__(self, filepath, voxel_spacing=DEFAULT_METERS_PER_VOXEL, voxel_size=DEFAULT_METERS_PER_VOXEL,
                  gamma_correct=True, gamma_value=2.2, join_voxels=False, use_physics=False, flatten=False):
@@ -29,8 +27,6 @@ class Vox2UsdConverter(object):
         self.join_voxels = join_voxels
         self.use_physics = use_physics
         self.flatten = flatten
-
-
 
     def create_material(self, stage, looks_scope, name, vox_mtl):
         mtl = UsdShade.Material.Define(stage, looks_scope.GetPath().AppendPath(name))
@@ -77,7 +73,6 @@ class Vox2UsdConverter(object):
         self.shader_varset = asset_geom.GetPrim().GetVariantSets().AddVariantSet("Shader")
         for variant_name in ShaderVariantSetNames.values():
             self.shader_varset.AddVariant(variant_name)
-
 
         GreedyMeshing.generate(self.voxel_size)
 
@@ -171,14 +166,13 @@ class Vox2UsdConverter(object):
                 target_prim = self.__get_target_prim(target_path, voxel_root)
                 UsdShade.MaterialBindingAPI(target_prim).Bind(mtl)
 
-
-
     def __convert_node(self, stage, node, parent_prim, geom_type):
         print("node_id", node.node_id)
         if isinstance(node, VoxTransform):
             xform_child = node.get_child()
             if isinstance(xform_child, VoxGroup):
-                xform = UsdGeom.Xform.Define(stage, parent_prim.GetPath().AppendPath("VoxelGroup_{}".format(xform_child.node_id)))
+                xform_path = parent_prim.GetPath().AppendPath("VoxelGroup_{}".format(xform_child.node_id))
+                xform = UsdGeom.Xform.Define(stage, xform_path)
                 xform.AddTransformOp().Set(Gf.Matrix4d(*node.transform))
                 for child in xform_child.children:
                     self.__convert_node(stage, child, xform, geom_type)
@@ -191,7 +185,8 @@ class Vox2UsdConverter(object):
         else:
             raise RuntimeError("Expected VoxTransform node. Got {}.".format(node.__class__))
 
-    def __set_pivot(self, vox_model, xformable):
+    @staticmethod
+    def __set_pivot(vox_model, xformable):
         # TODO: This doesn't actually work for rotated models. The pivot doesn't end up at the bottom
         # MV pivot is at the center. I prefer to have it at the bottom.
         # I'm tweaking the translation here to counteract that.
@@ -210,10 +205,19 @@ class Vox2UsdConverter(object):
         curr_xform.SetRow(3, Gf.Vec4d(*trans_row))
         xform_attr.Set(curr_xform)
 
+    def __add_binding_target(self, mtl_id, target_path, geometry_var, point_shape_var=None):
+        if geometry_var == GeometryVariantSetNames.MERGED_MESHES:
+            self.used_mtls[mtl_id][geometry_var].append(target_path)
+        elif geometry_var == GeometryVariantSetNames.POINT_INSTANCES:
+            if point_shape_var is None:
+                raise TypeError("You must provide a PointShapeVariantSetNames value for point_shape_var.")
+            else:
+                self.used_mtls[mtl_id][geometry_var][point_shape_var].append(target_path)
+
     def __fill_mesh(self, shape_node, mesh):
         display_colors = []
         opacity = []
-        mtl_id, mesh_verts = shape_node.model.meshes.items()[0]
+        mtl_id, mesh_verts = list(shape_node.model.meshes.items())[0]
         vox_mtl = VoxBaseMaterial.get(mtl_id)
         mesh.CreatePointsAttr(mesh_verts)
         face_count = int(len(mesh_verts) / 4.0)
@@ -227,45 +231,45 @@ class Vox2UsdConverter(object):
             opacity.extend([1.0] * face_count)
         mesh.CreateDisplayColorPrimvar(UsdGeom.Tokens.uniform).Set(display_colors)
         mesh.CreateDisplayOpacityPrimvar(UsdGeom.Tokens.uniform).Set(opacity)
-        self.used_mtls[mtl_id][GeometryVariantSetNames.MERGED_MESHES].append(mesh.GetPath())
+        self.__add_binding_target(mtl_id, mesh.GetPath(), GeometryVariantSetNames.MERGED_MESHES)
 
     def __create_geom_subset_per_mtl(self, shape_node, mesh):
-            # merge meshes to create geomsubsets
-            vertices = []
-            total_face_count = 0
-            display_colors = []
-            opacity = []
-            subsets = []
-            for mtl_id, mesh_verts in shape_node.model.meshes.items():
-                start_idx = len(vertices)
-                vertices.extend(mesh_verts)
-                end_idx = len(vertices)
-                start_face_idx = int(start_idx / 4)
-                end_face_idx = int(end_idx / 4)
-                face_count = int(len(mesh_verts) / 4.0)
-                total_face_count += face_count
-                vox_mtl = VoxBaseMaterial.get(mtl_id)
-                display_colors.extend([Gf.Vec3f(vox_mtl.color[0:3])] * face_count)
-                if isinstance(vox_mtl, VoxGlassMaterial):
-                    opacity.extend([vox_mtl.get_opacity()] * face_count)
-                else:
-                    opacity.extend([1.0] * face_count)
-                subsets.append({"mtl_id": mtl_id, "start_face_idx": start_face_idx, "end_face_idx": end_face_idx})
+        # merge meshes to create geomsubsets
+        vertices = []
+        total_face_count = 0
+        display_colors = []
+        opacity = []
+        subsets = []
+        for mtl_id, mesh_verts in shape_node.model.meshes.items():
+            start_idx = len(vertices)
+            vertices.extend(mesh_verts)
+            end_idx = len(vertices)
+            start_face_idx = int(start_idx / 4)
+            end_face_idx = int(end_idx / 4)
+            face_count = int(len(mesh_verts) / 4.0)
+            total_face_count += face_count
+            vox_mtl = VoxBaseMaterial.get(mtl_id)
+            display_colors.extend([Gf.Vec3f(vox_mtl.color[0:3])] * face_count)
+            if isinstance(vox_mtl, VoxGlassMaterial):
+                opacity.extend([vox_mtl.get_opacity()] * face_count)
+            else:
+                opacity.extend([1.0] * face_count)
+            subsets.append({"mtl_id": mtl_id, "start_face_idx": start_face_idx, "end_face_idx": end_face_idx})
 
-            mesh.CreatePointsAttr(vertices)
-            mesh.CreateFaceVertexCountsAttr([4] * total_face_count)
-            mesh.CreateFaceVertexIndicesAttr(list(range(len(vertices))))
-            mesh.CreateDisplayColorPrimvar(UsdGeom.Tokens.uniform).Set(display_colors)
-            mesh.CreateDisplayOpacityPrimvar(UsdGeom.Tokens.uniform).Set(opacity)
+        mesh.CreatePointsAttr(vertices)
+        mesh.CreateFaceVertexCountsAttr([4] * total_face_count)
+        mesh.CreateFaceVertexIndicesAttr(list(range(len(vertices))))
+        mesh.CreateDisplayColorPrimvar(UsdGeom.Tokens.uniform).Set(display_colors)
+        mesh.CreateDisplayOpacityPrimvar(UsdGeom.Tokens.uniform).Set(opacity)
 
-            with Usd.EditContext(self.stage):
-                mesh_binding_api = UsdShade.MaterialBindingAPI(mesh.GetPrim())
-                for item in subsets:
-                    subset = mesh_binding_api.CreateMaterialBindSubset("VoxelPart_{}".format(item["mtl_id"]),
-                                                                       Vt.IntArray(list(range(item["start_face_idx"], item["end_face_idx"]))))
-                    self.used_mtls[item["mtl_id"]][GeometryVariantSetNames.MERGED_MESHES].append(subset.GetPath())
+        with Usd.EditContext(self.stage):
+            mesh_binding_api = UsdShade.MaterialBindingAPI(mesh.GetPrim())
+            for item in subsets:
+                subset = mesh_binding_api.CreateMaterialBindSubset("VoxelPart_{}".format(item["mtl_id"]),
+                                                                   Vt.IntArray(list(range(item["start_face_idx"], item["end_face_idx"]))))
+                self.__add_binding_target(item["mtl_id"], subset.GetPath(), GeometryVariantSetNames.MERGED_MESHES)
 
-            self.total_triangles += total_face_count * 2
+        self.total_triangles += total_face_count * 2
 
     def __voxels2meshes(self, stage, xform_node, shape_node, parent_prim):
         self.total_voxels += len(shape_node.model.voxels)
@@ -277,25 +281,25 @@ class Vox2UsdConverter(object):
         else:
             self.__fill_mesh(shape_node, mesh)
 
-    def __create_cube_geom(self, stage, instancer, proto_container, mtl_id, mtl):
+    def __create_cube_geom(self, stage, instancer, proto_container, mtl_id):
         mtl_display_id = VoxBaseMaterial.get(mtl_id).get_display_id()
         cube = UsdGeom.Cube.Define(stage,
                                    proto_container.GetPath().AppendPath("VoxelCube_{}".format(mtl_display_id)))
         cube.CreateSizeAttr(self.voxel_size)
-        self.used_mtls[mtl_id][GeometryVariantSetNames.POINT_INSTANCES][PointShapeVariantSetNames.CUBES].append(
-            cube.GetPath())
+        self.__add_binding_target(mtl_id, cube.GetPath(), GeometryVariantSetNames.POINT_INSTANCES,
+                                  point_shape_var=PointShapeVariantSetNames.CUBES)
         self.__set_common_point_attrs(cube, instancer, mtl_id)
 
-    def __create_sphere_geom(self, stage, instancer, proto_container, mtl_id, mtl):
+    def __create_sphere_geom(self, stage, instancer, proto_container, mtl_id):
         mtl_display_id = VoxBaseMaterial.get(mtl_id).get_display_id()
-        sphere = UsdGeom.Sphere.Define(stage,
-                                   proto_container.GetPath().AppendPath("VoxelSphere_{}".format(mtl_display_id)))
+        sphere_path = proto_container.GetPath().AppendPath("VoxelSphere_{}".format(mtl_display_id))
+        sphere = UsdGeom.Sphere.Define(stage, sphere_path)
         sphere.CreateRadiusAttr(self.voxel_size / 2.0)
-        self.used_mtls[mtl_id][GeometryVariantSetNames.POINT_INSTANCES][PointShapeVariantSetNames.SPHERES].append(
-            sphere.GetPath())
+        self.__add_binding_target(mtl_id, sphere.GetPath(), GeometryVariantSetNames.POINT_INSTANCES,
+                                  point_shape_var=PointShapeVariantSetNames.SPHERES)
         self.__set_common_point_attrs(sphere, instancer, mtl_id)
 
-    def __create_stud_geom(self, stage, instancer, proto_container, mtl_id, mtl):
+    def __create_stud_geom(self, stage, instancer, proto_container, mtl_id):
         mtl_display_id = VoxBaseMaterial.get(mtl_id).get_display_id()
         mesh = UsdGeom.Mesh.Define(stage, proto_container.GetPath().AppendPath("VoxelStud_{}".format(mtl_display_id)))
         mesh.CreatePointsAttr(StudMesh.points)
@@ -304,7 +308,8 @@ class Vox2UsdConverter(object):
         mesh.CreateNormalsAttr(StudMesh.normals)
         mesh.SetNormalsInterpolation(StudMesh.normals_interpolation)
         mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
-        self.used_mtls[mtl_id][GeometryVariantSetNames.POINT_INSTANCES][PointShapeVariantSetNames.STUDS].append(mesh.GetPath())
+        self.__add_binding_target(mtl_id, mesh.GetPath(), GeometryVariantSetNames.POINT_INSTANCES,
+                                  point_shape_var=PointShapeVariantSetNames.STUDS)
         self.__set_common_point_attrs(mesh, instancer, mtl_id)
 
     def __set_common_point_attrs(self, geom, instancer, mtl_id):
@@ -342,30 +347,24 @@ class Vox2UsdConverter(object):
         else:
             pt_shape_varset = default_prim.GetVariantSet("PointShape")
 
-        for proto_id, item in enumerate(self.used_mtls.items()):
-            mtl_id, mtl = item
-            mtl = mtl["mtl"]
-            mtl2proto_id[mtl_id] = proto_id
-
-            pt_shape_varset.SetVariantSelection(PointShapeVariantSetNames.CUBES)
-            with pt_shape_varset.GetVariantEditContext():
-                self.__create_cube_geom(stage, instancer, proto_container, mtl_id, mtl)
-            pt_shape_varset.SetVariantSelection(PointShapeVariantSetNames.SPHERES)
-            with pt_shape_varset.GetVariantEditContext():
-                self.__create_sphere_geom(stage, instancer, proto_container, mtl_id, mtl)
-            pt_shape_varset.SetVariantSelection(PointShapeVariantSetNames.STUDS)
-            with pt_shape_varset.GetVariantEditContext():
-                self.__create_stud_geom(stage, instancer, proto_container, mtl_id, mtl)
-
-        # HACK: Need to reset the specifier because it gets set to "def" after adding children
-        # proto_container.GetPrim().SetSpecifier(Sdf.SpecifierOver)
-
-        # TODO: Can I make prototypes a relative path?
         ids = []
         positions = []
-        for idx, voxel in enumerate(shape_node.model.voxels):
-            #self.total_voxels += 1
-            ids.append(mtl2proto_id[voxel[3]])
+        for voxel in shape_node.model.voxels:
+            # self.total_voxels += 1
+            mtl_id = voxel[3]
+            if mtl_id not in mtl2proto_id:
+                mtl2proto_id[mtl_id] = len(proto_container.GetChildren())
+                pt_shape_varset.SetVariantSelection(PointShapeVariantSetNames.CUBES)
+                with pt_shape_varset.GetVariantEditContext():
+                    self.__create_cube_geom(stage, instancer, proto_container, mtl_id)
+                pt_shape_varset.SetVariantSelection(PointShapeVariantSetNames.SPHERES)
+                with pt_shape_varset.GetVariantEditContext():
+                    self.__create_sphere_geom(stage, instancer, proto_container, mtl_id)
+                pt_shape_varset.SetVariantSelection(PointShapeVariantSetNames.STUDS)
+                with pt_shape_varset.GetVariantEditContext():
+                    self.__create_stud_geom(stage, instancer, proto_container, mtl_id)
+
+            ids.append(mtl2proto_id[mtl_id])
             position = [float(coord) * self.voxel_spacing for coord in voxel[:3]]
             # XY center the local origin on the model
             position = [position[0] - int(shape_node.model.size[0] / 2.0),
@@ -379,4 +378,4 @@ class Vox2UsdConverter(object):
 
 
 if __name__ == '__main__':
-    Vox2UsdConverter(r"C:\temp\test_data\cop_car.vox", use_physics=False, flatten=False).convert()
+    Vox2UsdConverter(r"C:\temp\test_data\house.vox", use_physics=False, flatten=False).convert()

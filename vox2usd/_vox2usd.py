@@ -148,6 +148,11 @@ class Vox2UsdConverter(object):
             self.geo_varset.SetVariantSelection(GeometryVariantSetNames.MERGED_MESHES)
             self.shader_varset.SetVariantSelection(ShaderVariantSetNames.PREVIEW)
             self.stage.Export(os.path.join(self.output_dir, self.output_file_name), args={"format": "usdc"})
+            del self.stage
+            del mesh_stage
+            del points_stage
+            os.remove(self.mesh_payload_identifier)
+            os.remove(self.points_payload_identifier)
         else:
             self.geo_varset.SetVariantSelection(GeometryVariantSetNames.MERGED_MESHES)
             self.shader_varset.SetVariantSelection(ShaderVariantSetNames.OMNIVERSE)

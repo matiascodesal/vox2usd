@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Translates a vox file into a USD component model.Voxels are translated
+Translates a MagicVoxel vox file into a USD component model. Voxels are translated
 into point instances shapes and merged meshes per material. Materials are
 translated into UsdPreviewSurface and NVIDIA Omniverse materials.
 """

@@ -1,18 +1,32 @@
+"""Vox file reading
+
+This module contains the VoxReader class for reading the binary data of MagicaVoxel vox files.
+It also has classes for representing all of the vox data structures.
+"""
 import struct
 
 from pxr import UsdShade, Gf, Sdf
 
-VOX_MAX_DICT_KEY_VALUE_PAIRS = 256
-OMNI_ROUGHNESS_SCALAR = 1
-OMNI_EMISSIVE_INTENSITY_SCALAR = 20000
+from vox2usd.constants import OMNI_ROUGHNESS_SCALAR, OMNI_EMISSIVE_INTENSITY_SCALAR, VOX_MAX_DICT_KEY_VALUE_PAIRS
 
 
 class VoxReader(object):
+    """Reads MagicaVoxel vox files.
+
+    Binary data is parsed base on:
+        * https://github.com/ephtracy/voxel-model/blob/master/MagicaVoxel-file-format-vox.txt
+        * https://github.com/ephtracy/voxel-model/blob/master/MagicaVoxel-file-format-vox-extension.txt
+    """
+
     def __init__(self, vox_file_path):
         self.vox_file_path = vox_file_path
         self.vox_file = None
 
     def read(self):
+        """The main function for reading vox files.
+
+        Reads vox file byte by byte.
+        """
         with open(self.vox_file_path, 'rb') as self.vox_file:
             VoxNode.initialize()
             VoxModel.initialize()
@@ -53,6 +67,7 @@ class VoxReader(object):
                     num_voxels, = struct.unpack('<i', self.vox_file.read(4))
                     voxels = []
                     for voxel in range(num_voxels):
+                        # X,Y,Z,MTL_ID
                         voxel_data = struct.unpack('<4B', self.vox_file.read(4))
                         voxels.append(voxel_data)
                         VoxBaseMaterial.used_palette_ids.add(voxel_data[3])
@@ -61,7 +76,7 @@ class VoxReader(object):
                 elif name == 'nTRN':
                     node_id, = struct.unpack('<i', self.vox_file.read(4))
                     # node name and hidden
-                    node_dict = self.__read_vox_dict()
+                    node_dict = self._read_vox_dict()
                     if node_dict is not None:
                         pass
                     child_node_id, = struct.unpack('<i', self.vox_file.read(4))
@@ -72,7 +87,7 @@ class VoxReader(object):
                     node.child_id = child_node_id
 
                     # TODO: assert (reserved_id == UINT32_MAX & & num_frames == 1); // must be these values according to the spec
-                    frame_dict = self.__read_vox_dict()
+                    frame_dict = self._read_vox_dict()
                     if frame_dict and "_t" in frame_dict:
                         translate = [float(component) for component in frame_dict["_t"].split()]
                         translate.append(1)
@@ -122,7 +137,7 @@ class VoxReader(object):
                         pass
                 elif name == 'nGRP':
                     node_id, = struct.unpack('<i', self.vox_file.read(4))
-                    node_dict = self.__read_vox_dict()
+                    node_dict = self._read_vox_dict()
                     # node dict is unused
                     assert (node_dict is None)
                     num_children, = struct.unpack('<i', self.vox_file.read(4))
@@ -133,21 +148,21 @@ class VoxReader(object):
                         node.children.append(child)
                 elif name == 'nSHP':
                     node_id, = struct.unpack('<i', self.vox_file.read(4))
-                    node_dict = self.__read_vox_dict()
+                    node_dict = self._read_vox_dict()
                     # node dict is unused
                     assert (node_dict is None)
                     num_models, = struct.unpack('<i', self.vox_file.read(4))
                     assert (num_models == 1)  # must be 1 according to spec
                     model_id, = struct.unpack('<i', self.vox_file.read(4))
 
-                    model_dict = self.__read_vox_dict()
+                    model_dict = self._read_vox_dict()
                     shape = VoxShape.get_or_create_node(node_id)
                     shape.model = VoxModel.get(model_id)
                     # model dict is unused
                     assert (model_dict is None)
                 elif name == 'LAYR':
                     layer_id, = struct.unpack('<i', self.vox_file.read(4))
-                    layer_dict = self.__read_vox_dict()
+                    layer_dict = self._read_vox_dict()
                     reserved_id, = struct.unpack('<i', self.vox_file.read(4))
                     assert (reserved_id == -1)
                 elif name == 'RGBA':
@@ -170,7 +185,7 @@ class VoxReader(object):
                 elif name == 'MATL':
                     palette_id, = struct.unpack('<i', self.vox_file.read(4))
                     mtl = VoxBaseMaterial.get(palette_id)
-                    mtl_dict = self.__read_vox_dict()
+                    mtl_dict = self._read_vox_dict()
                     VoxBaseMaterial.create_subclass(palette_id, mtl.color, mtl_dict, display_id=mtl.display_id)
                 elif name == 'rOBJ':
                     # skip
@@ -191,9 +206,8 @@ class VoxReader(object):
                     # This puts us out-of-step
                     raise RuntimeError("Unknown Chunk id {}".format(name))
 
-
-
-    def __read_vox_dict(self):
+    def _read_vox_dict(self):
+        """Unpacks a vox dictionary."""
         data = {}
         num_items, = struct.unpack('<i', self.vox_file.read(4))
         assert (num_items <= VOX_MAX_DICT_KEY_VALUE_PAIRS)
@@ -224,25 +238,53 @@ _trans= 0-1
 
 
 class VoxNode(object):
+    """Base class for all vox nodes.
+
+
+    Attributes:
+        instances: Class attribute for keeping track of all create VoxNodes and subclass objects by node_id.
+        _top_nodes: The nodes with no ancestors in the node hierarchy. There should only be one.
+    """
     instances = {}
-    __top_nodes = None
+    _top_nodes = None
 
     def __init__(self, node_id):
+        """Constructor
+
+        Args:
+            node_id: Node id from vox file.
+        """
         self.node_id = node_id
         VoxNode.instances[node_id] = self
 
     @staticmethod
     def initialize():
+        """Resets the instances dict and top nodes."""
         VoxNode.instances = {}
         VoxNode._top_nodes = None
 
     @staticmethod
     def get(node_id):
+        """Get a previously created VoxNode by id.
+
+        Args:
+            node_id: Node id from vox file.
+
+        Returns:
+            VoxNode
+        """
         return VoxNode.instances[node_id]
 
     @staticmethod
     def get_top_nodes():
-        if VoxNode.__top_nodes is None:
+        """Get nodes in the vox file that have no ancestors.
+
+        Should only be one node.
+
+        Returns:
+            list of VoxNode
+        """
+        if VoxNode._top_nodes is None:
             # Figure out which VoxTransforms are top nodes.
             all_transforms = set()
             child_transforms = set()
@@ -252,16 +294,32 @@ class VoxNode(object):
                 elif isinstance(node, VoxGroup):
                     for child in node.children:
                         child_transforms.add(child)
-            VoxNode.__top_nodes = list(all_transforms - child_transforms)
+            VoxNode._top_nodes = list(all_transforms - child_transforms)
 
-        return VoxNode.__top_nodes
+        return VoxNode._top_nodes
 
     @staticmethod
     def get_or_create_node(node_id):
+        """Get or create a node by node id.
+
+        Args:
+            node_id: Node id from vox file.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this function.
+        """
         raise NotImplementedError("Subclasses must implement this function.")
 
 
 class VoxTransform(VoxNode):
+    """A vox transform node.
+
+    All VoxTransform node have a single child VoxGroup or VoxShape.
+
+    Attributes:
+        child_id: The id of the child VoxGroup or VoxShape
+        transform (list): A 4x4 matrix in column-major order.
+    """
     def __init__(self, node_id):
         super(VoxTransform, self).__init__(node_id)
         self.child_id = None
@@ -277,6 +335,19 @@ class VoxTransform(VoxNode):
 
     @staticmethod
     def get_or_create_node(node_id):
+        """Get or create a node by node id.
+
+        Checks if a VoxNode with the given id was previously
+        create and returns it or creates a new one.
+
+        Args:
+            node_id: Node id from vox file.
+
+        Returns:
+            VoxNode or VoxTransform
+        Raises:
+            NotImplementedError: Subclasses must implement this function.
+        """
         if node_id in VoxNode.instances:
             return VoxNode.instances[node_id]
         else:
@@ -284,12 +355,32 @@ class VoxTransform(VoxNode):
 
 
 class VoxGroup(VoxNode):
+    """A vox group node.
+
+    All VoxGroup node can have multiple VoxTransform children.
+
+    Attributes:
+        children (list): A list of child VoxTransform nodes.
+    """
     def __init__(self, node_id):
         super(VoxGroup, self).__init__(node_id)
         self.children = []
 
     @staticmethod
     def get_or_create_node(node_id):
+        """Get or create a node by node id.
+
+        Checks if a VoxNode with the given id was previously
+        create and returns it or creates a new one.
+
+        Args:
+            node_id: Node id from vox file.
+
+        Returns:
+            VoxNode or VoxGroup
+        Raises:
+            NotImplementedError: Subclasses must implement this function.
+        """
         if node_id in VoxNode.instances:
             return VoxNode.instances[node_id]
         else:
@@ -297,12 +388,33 @@ class VoxGroup(VoxNode):
 
 
 class VoxShape(VoxNode):
+    """A vox shape node.
+
+    A VoxShape is the only drawable node and contains the voxel model
+    data to that should be drawn.
+
+    Attributes:
+        model (VoxModel): The voxel model data for the shape.
+    """
     def __init__(self, node_id):
         super(VoxShape, self).__init__(node_id)
         self.model = None
 
     @staticmethod
     def get_or_create_node(node_id):
+        """Get or create a node by node id.
+
+        Checks if a VoxNode with the given id was previously
+        create and returns it or creates a new one.
+
+        Args:
+            node_id: Node id from vox file.
+
+        Returns:
+            VoxNode or VoxShape
+        Raises:
+            NotImplementedError: Subclasses must implement this function.
+        """
         if node_id in VoxNode.instances:
             return VoxNode.instances[node_id]
         else:
@@ -310,6 +422,19 @@ class VoxShape(VoxNode):
 
 
 class VoxModel(object):
+    """A class representing a voxel model.
+
+    Contains the voxel data for a VoxShape as well as some processed data
+    for meshing and USD conversion. All created VoxModel objects are tracked
+    using an instances class dictionary using model_id keys.
+
+    Attribute:
+        instances: Class attribute for keeping track of all create VoxModel objects by model_id.
+        model_id: Unique id for from vox file.
+        size (list): XYZ dimensions of the model
+        voxels (list): A voxel is a list stored X,Y,Z,MTL_ID
+        meshes: A dictionary that stores face collections by mtl_id
+    """
     instances = {}
 
     def __init__(self, model_id, size):
@@ -321,6 +446,7 @@ class VoxModel(object):
 
     @staticmethod
     def initialize():
+        """Resets the instances dict."""
         VoxModel.instances = {}
 
     @staticmethod
@@ -329,6 +455,13 @@ class VoxModel(object):
 
     @staticmethod
     def get_all():
+        """Get all VoxModel instances.
+
+        Useful for querying just the voxel data in the whole vox file for meshing.
+
+        Returns:
+            list of VoxModel
+        """
         return VoxModel.instances.values()
 
     def add_voxels(self, voxels):
@@ -336,6 +469,20 @@ class VoxModel(object):
 
 
 class VoxBaseMaterial(object):
+    """A base class for representing MagicaVoxel materials.
+
+    All created VoxBaseMaterial objects are tracked
+    using an instances class dictionary using palette_id keys.
+
+    Attributes:
+        instances (dict): An instances class dictionary using palette_id keys.
+        gamma_correct (bool): Whether to change the gamma of the palette colors. MV colors are in linear space.
+        gamma_values (float): The target gamma.
+        used_palette_ids (set): A set of palette ids that are actually used by voxels in the entire vox file.
+        palette_id: The unique id of the palette color.
+        display_id: The displayed id of the palette color.
+        color: The diffuse color of the material
+    """
     instances = {}
     gamma_correct = False
     gamma_value = 2.2
@@ -361,6 +508,14 @@ class VoxBaseMaterial(object):
         return VoxBaseMaterial.instances[palette_id]
 
     def get_display_id(self):
+        """Get the material display id
+
+        Materials in MagicaVoxel can be moved around on the palette. Their palette_id doesn't
+        change, but their display_id can change.
+
+        Returns:
+            int: Material display id.
+        """
         return self.display_id or self.palette_id
 
     @classmethod

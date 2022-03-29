@@ -11,11 +11,12 @@ if __name__ == "__main__":
     import os
     import sys
 
+    import vox2usd
     from vox2usd import Vox2UsdConverter
 
     descr = __doc__.strip()
-    parser = argparse.ArgumentParser(prog=os.path.basename(sys.argv[0]),
-                                     description=descr)
+    descr = "{} v{} ".format(os.path.basename(sys.argv[0]), vox2usd.__version__) + descr
+    parser = argparse.ArgumentParser(prog=os.path.basename(sys.argv[0]), description=descr)
     parser.add_argument('vox_file')
     parser.add_argument(
         '-fl', '--flatten', action='store_true', help="Output as a single usdc file.")

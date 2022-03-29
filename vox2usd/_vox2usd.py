@@ -382,7 +382,7 @@ class Vox2UsdConverter(object):
             parent_prim: The parent prim for the mesh.
         """
         instancer = UsdGeom.PointInstancer.Define(stage, parent_prim.GetPath().AppendPath(
-            "VoxModel_{}".format(shape_node.node_id)))
+            "VoxelModel_{}".format(shape_node.node_id)))
         instancer.AddTransformOp().Set(Gf.Matrix4d(*xform_node.transform))
         # self._set_pivot(shape_node.model, instancer)
         instancer.CreatePrototypesRel()
